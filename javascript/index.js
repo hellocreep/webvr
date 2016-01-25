@@ -1,4 +1,5 @@
-import aframe from 'aframe-core'
+import aframe from 'aframe'
+import aframeCore from 'aframe-core'
 import aframeTextComponent from 'aframe-text-component'
 
-aframe.registerComponent('text', aframeTextComponent.component);
+aframeCore.registerComponent('text', aframeTextComponent.component);
