@@ -7,14 +7,24 @@
     <script src="static/bundle.js"></script>
   </head>
   <body>
-    <a-scene>
+    <a-scene stats="true">
+      <a-camera position="0 1.8 4" cursor-visible="true" cursor-scale="2" cursor-color="#4CC3D9" cursor-offset="2" cursor-maxdistance="100" cursor-opacity="0.5" cursor-fuse="true"></a-camera>
       <a-sphere position="0 1.25 -1" radius="1.25" color="#EF2D5E"></a-sphere>
-      <a-cube position="-1 0.5 1" rotation="0 45 0" width="1" height="1" depth="1"  color="#4CC3D9"></a-cube>
+      <a-cube id="cube" position="-1 0.5 1" rotation="0 45 0" width="1" height="1" depth="1"  color="#4CC3D9"></a-cube>
       <a-cylinder position="1 0.75 1" radius="0.5" height="1.5" color="#FFC65D"></a-cylinder>
-      <a-model src="https://aframe.io/aframe/examples/_models/tree1/tree1.dae"></a-model>
-      <a-plane rotation="-90 0 0" width="4" height="4" color="#7BC8A4"></a-plane>
-
+      <a-plane rotation="-90 0 0" width="400" height="400" color="#1354a7"></a-plane>
+      <a-model position="0 0 1" rotation="-90 0 0" src="assets/model/Stormtrooper/Stormtrooper.dae"></a-model>
       <a-sky color="#ECECEC"></a-sky>
+      <a-entity id="river" geometry="primitive: plane" material="color: blue"
+          position="-100 0 0" sound="src: assets/sound/music.mp3; autoplay: true">
+      </a-entity>
+      <a-entity text="text: Hello, World!" material="color: blue"></a-entity>
     </a-scene>
+    <script type="text/javascript">
+      document.querySelector('#cube').addEventListener('click', function () {
+        this.setAttribute('material', 'color', 'red');
+        console.log('I was clicked!');
+      });
+    </script>
   </body>
 </html>
