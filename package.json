@@ -4,12 +4,14 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "start": "budo javascript/index.js:static/bundle.js --live -- -t [ babelify --presets [ es2015 ] ] --verbose --port 3000 --open --dir ."
+    "start": "budo javascript/index.js:public/bundle.js --live -- -t [ babelify --presets [ es2015 ] ] --verbose --port 3000 --open --dir .",
+    "deploy": "browserify javascript/index.js -o public/bundle.js -t [ babelify --presets [ es2015 ] ] && ghpages"
   },
   "devDependencies": {
     "babel-preset-es2015": "^6.3.13",
     "babelify": "^7.2.0",
-    "budo": "^7.0.0"
+    "budo": "^7.0.0",
+    "ghpages": "0.0.3"
   },
   "keywords": [
     "aframe",
