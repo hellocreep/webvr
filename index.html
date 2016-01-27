@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Hello, World! • A-Frame</title>
+    <meta name="description" content="Hello, World! • A-Frame">
+    <script src="public/bundle.js"></script>
+  </head>
+  <body>
+    <a-scene stats="true">
+      <!-- <a-camera position="0 1.8 4" cursor-visible="true" cursor-scale="2" cursor-color="#4CC3D9" cursor-offset="2" cursor-maxdistance="100" cursor-opacity="0.5" cursor-fuse="true"></a-camera>
+      <a-sphere position="0 1.25 -1" radius="1.25" color="#EF2D5E"></a-sphere>
+      <a-cube id="cube" position="-1 0.5 1" rotation="0 45 0" width="1" height="1" depth="1"  color="#4CC3D9"></a-cube>
+      <a-cylinder position="1 0.75 1" radius="0.5" height="1.5" color="#FFC65D"></a-cylinder>
+      <a-plane rotation="-90 0 0" width="400" height="400" color="#1354a7"></a-plane>
+      <a-sky color="#ECECEC"></a-sky>
+      <a-entity id="river" geometry="primitive: plane" material="color: blue"
+          position="-100 0 0" sound="src: assets/sound/music.mp3; autoplay: true">
+      </a-entity> -->
+      <a-entity id="board" position="0 3 0" geometry="primitive: plane; width: 6; height: 2" material="color: yellow">
+        <a-entity text="text: Hello, World!" material="color: blue" position="-1.8 -0.2 0"></a-entity>
+        <a-cylinder radius="0.1" height="1.5" color="#D03E18" position="-2.2 -1.75 0"></a-cylinder>
+        <a-cylinder radius="0.1" height="1.5" color="#D03E18" position="2.2 -1.75 0"></a-cylinder>
+      </a-entity>
+    </a-scene>
+    <!-- <script type="text/javascript">
+      document.querySelector('#cube').addEventListener('click', function () {
+        this.setAttrwibute('material', 'color', 'red');
+        console.log('I was clicked!');
+      }); -->
+    </script>
+  </body>
+</html>
