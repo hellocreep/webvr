@@ -8,23 +8,63 @@
   </head>
   <body>
     <a-scene stats="true">
-      <a-camera position="0 1.8 4" cursor-visible="true" cursor-scale="2" cursor-color="#4CC3D9" cursor-offset="2" cursor-maxdistance="100" cursor-opacity="0.5" cursor-fuse="true"></a-camera>
-      <a-sphere position="0 1.25 -1" radius="1.25" color="#EF2D5E"></a-sphere>
-      <a-cube id="cube" position="-1 0.5 1" rotation="0 45 0" width="1" height="1" depth="1"  color="#4CC3D9"></a-cube>
-      <a-cylinder position="1 0.75 1" radius="0.5" height="1.5" color="#FFC65D"></a-cylinder>
-      <a-plane rotation="-90 0 0" width="400" height="400" color="#1354a7"></a-plane>
-      <a-sky color="#ECECEC"></a-sky>
-      <a-entity id="river" geometry="primitive: plane" material="color: blue"
-          position="-100 0 0" sound="src: assets/sound/music.mp3; autoplay: true">
+      <a-entity rotation="0 45 0" position="0 20 0">
+
+          <!-- Large, foreground -->
+          <a-cube color="white" opacity="0.25" width="18" depth="28" height="6">
+            <a-animation attribute="position" from="-280 240 180" to="-280 240 340" begin="0" dur="36000" easing="linear" repeat="indefinite" fill="both"></a-animation>
+          </a-cube>
+
+          <a-cube color="white" opacity="0.65" width="8" depth="12" height="4">
+            <a-animation attribute="position" from="5 32 -80" to="5 32 120" begin="12000" dur="48000" easing="linear" repeat="indefinite" fill="both"></a-animation>
+          </a-cube>
+
+          <!-- Behind the A -->
+          <a-cube color="white" opacity="0.75" width="6" depth="9" height="4">
+            <a-animation attribute="position" from="10 12 -10" to="10 12 100" begin="1000" dur="36000" easing="linear" repeat="indefinite" fill="both"></a-animation>
+            <a-animation attribute="visible" from="false" to="true" begin="1000" dur="1"></a-animation>
+          </a-cube>
+
+          <a-cube color="white" opacity="0.5" width="8" depth="12" height="3">
+            <a-animation attribute="position" from="20 16 -80" to="20 16 120" begin="200" dur="52000" easing="linear" repeat="indefinite" fill="both"></a-animation>
+          </a-cube>
+
+          <a-cube color="white" opacity="0.8" width="8" depth="12" height="3">
+            <a-animation attribute="position" from="-20 18 -50" to="-20 18 120" begin="200" dur="50000" easing="linear" repeat="indefinite" fill="both"></a-animation>
+          </a-cube>
+
+          <a-cube color="white" opacity="0.75" width="5" depth="7" height="3">
+            <a-animation attribute="position" from="26 20 -80" to="26 20 120" begin="20000" dur="48000" easing="linear" repeat="indefinite" fill="both"></a-animation>
+          </a-cube>
+
+        </a-entity>
+        <a-entity>
+  <a-animation attribute="position" from="0 5 0" to="0 0 0" dur="4000" easing="ease-out"></a-animation>
+  <a-camera id="camera"  position="0 1.8 9" cursor-visible="false" ></a-camera>
+</a-entity>
+      <a-light type="directional" color="#FFF" intensity="0.45" position="4 2 1"></a-light>
+      <a-light type="ambient" color="#ccc"></a-light>
+      <!-- <a-camera position="-10 8 10" cursor-visible="true" cursor-scale="2" cursor-color="#4CC3D9" cursor-offset="2" cursor-maxdistance="100" cursor-opacity="0.5" cursor-fuse="true"></a-camera> -->
+      <a-plane rotation="-90 0 0" width="40" height="40" color="#f0e1bb"></a-plane>
+      <a-sky color="#cee8ff"></a-sky>
+      <a-entity id="road" geometry="primitive: plane; width: 40; height: 5" material="color: #BDBDBD"
+          position="0 0.1 3" rotation="-90 0 0" sound="src: assets/sound/music.mp3; autoplay: true">
       </a-entity>
-      <a-entity text="text: Hello, World!" material="color: blue"></a-entity>
-      <a-entity id="board" position="0 3 0" geometry="primitive: plane; width: 6; height: 2" material="color: yellow">
-        <a-entity text="text: Hello, World!" material="color: blue" position="-1.8 -0.2 0"></a-entity>
-        <a-cylinder radius="0.1" height="1.5" color="#D03E18" position="-2.2 -1.75 0"></a-cylinder>
-        <a-cylinder radius="0.1" height="1.5" color="#D03E18" position="2.2 -1.75 0"></a-cylinder>
+      <a-entity id="lawn-left" geometry="primitive: plane; width: 40; height: 2" material="color: #4CAF50"
+          position="0 0.1 -0.5" rotation="-90 0 0">
+      </a-entity>
+      <a-entity id="lawn-right" geometry="primitive: plane; width: 40; height: 2" material="color: #4CAF50"
+          position="0 0.1 6.5" rotation="-90 0 0">
+      </a-entity>
+      <a-entity id="board" position="0 3 0">
+        <a-cube id="cube" position="0 0 0" width="6" height="2" depth="0.1"  color="#1354a7"></a-cube>
+        <a-entity text="text: Apia" material="color: white" position="-0.7 -0.2 0.05"></a-entity>
+        <a-cylinder radius="0.1" height="1.5" color="#6F5046" position="-2.2 -1.75 0"></a-cylinder>
+        <a-cylinder radius="0.1" height="1.5" color="#6F5046" position="2.2 -1.75 0"></a-cylinder>
       </a-entity>
     </a-scene>
     <script type="text/javascript">
+      document.getElementsByClassName("a-enter-vr-button")[0].click()
       document.querySelector('#cube').addEventListener('click', function () {
         this.setAttribute('material', 'color', 'red');
         console.log('I was clicked!');
