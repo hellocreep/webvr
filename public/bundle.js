@@ -1,104 +1,11 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-// shim for using process in browser
-
-var process = module.exports = {};
-var queue = [];
-var draining = false;
-var currentQueue;
-var queueIndex = -1;
-
-function cleanUpNextTick() {
-    draining = false;
-    if (currentQueue.length) {
-        queue = currentQueue.concat(queue);
-    } else {
-        queueIndex = -1;
-    }
-    if (queue.length) {
-        drainQueue();
-    }
-}
-
-function drainQueue() {
-    if (draining) {
-        return;
-    }
-    var timeout = setTimeout(cleanUpNextTick);
-    draining = true;
-
-    var len = queue.length;
-    while(len) {
-        currentQueue = queue;
-        queue = [];
-        while (++queueIndex < len) {
-            if (currentQueue) {
-                currentQueue[queueIndex].run();
-            }
-        }
-        queueIndex = -1;
-        len = queue.length;
-    }
-    currentQueue = null;
-    draining = false;
-    clearTimeout(timeout);
-}
-
-process.nextTick = function (fun) {
-    var args = new Array(arguments.length - 1);
-    if (arguments.length > 1) {
-        for (var i = 1; i < arguments.length; i++) {
-            args[i - 1] = arguments[i];
-        }
-    }
-    queue.push(new Item(fun, args));
-    if (queue.length === 1 && !draining) {
-        setTimeout(drainQueue, 0);
-    }
-};
-
-// v8 likes predictible objects
-function Item(fun, array) {
-    this.fun = fun;
-    this.array = array;
-}
-Item.prototype.run = function () {
-    this.fun.apply(null, this.array);
-};
-process.title = 'browser';
-process.browser = true;
-process.env = {};
-process.argv = [];
-process.version = ''; // empty string to avoid regexp issues
-process.versions = {};
-
-function noop() {}
-
-process.on = noop;
-process.addListener = noop;
-process.once = noop;
-process.off = noop;
-process.removeListener = noop;
-process.removeAllListeners = noop;
-process.emit = noop;
-
-process.binding = function (name) {
-    throw new Error('process.binding is not supported');
-};
-
-process.cwd = function () { return '/' };
-process.chdir = function (dir) {
-    throw new Error('process.chdir is not supported');
-};
-process.umask = function() { return 0; };
-
-},{}],2:[function(require,module,exports){
 'use strict';
 
 var _aframe = require('aframe');
 
 var _aframe2 = _interopRequireDefault(_aframe);
 
-var _aframeCore = require('aframe/node_modules/aframe-core');
+var _aframeCore = require('aframe-core');
 
 var _aframeCore2 = _interopRequireDefault(_aframeCore);
 
@@ -110,2372 +17,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 _aframeCore2.default.registerComponent('text', _aframeTextComponent2.default.component);
 
-},{"aframe":34,"aframe-text-component":3,"aframe/node_modules/aframe-core":87}],3:[function(require,module,exports){
-/**
- * Text component for A-Frame.
- */
-require('./lib/FontUtils');
-require('./lib/TextGeometry');
-require('./lib/helvetiker_regular.typeface');
-
-module.exports.component = {
-  schema: {
-    bevelEnabled: { default: false },
-    bevelSize: { default: 8, min: 0 },
-    bevelThickness: { default: 12, min: 0 },
-    curveSegments: { default: 12, min: 0 },
-    font: { default: 'helvetiker', min: 0 },
-    height: { default: 0.05, min: 0 },
-    size: { default: 0.5, min: 0 },
-    style: { default: 'normal', oneOf: [ 'normal', 'italics' ] },
-    text: { default: '' },
-    weight: { default: 'normal', oneOf: [ 'normal', 'bold' ] }
-  },
-
-  /**
-   * Called when component is attached and when component data changes.
-   * Generally modifies the entity based on the data.
-   */
-  update: function (oldData) {
-    this.el.object3D.geometry = getTextGeometry(this.data);
-  }
-};
-
-function getTextGeometry (data) {
-  return new THREE.TextGeometry(data.text, data);
-}
-
-},{"./lib/FontUtils":4,"./lib/TextGeometry":5,"./lib/helvetiker_regular.typeface":6}],4:[function(require,module,exports){
-/**
- * @author zz85 / http://www.lab4games.net/zz85/blog
- * @author alteredq / http://alteredqualia.com/
- *
- * For Text operations in three.js (See TextGeometry)
- *
- * It uses techniques used in:
- *
- *	Triangulation ported from AS3
- *		Simple Polygon Triangulation
- *		http://actionsnippet.com/?p=1462
- *
- * 	A Method to triangulate shapes with holes
- *		http://www.sakri.net/blog/2009/06/12/an-approach-to-triangulating-polygons-with-holes/
- *
- */
-
-THREE.FontUtils = {
-
-	faces: {},
-
-	// Just for now. face[weight][style]
-
-	face: 'helvetiker',
-	weight: 'normal',
-	style: 'normal',
-	size: 150,
-	divisions: 10,
-
-	getFace: function () {
-
-		try {
-
-			return this.faces[ this.face.toLowerCase() ][ this.weight ][ this.style ];
-
-		} catch ( e ) {
-
-			throw "The font " + this.face + " with " + this.weight + " weight and " + this.style + " style is missing."
-
-		}
-
-	},
-
-	loadFace: function ( data ) {
-
-		var family = data.familyName.toLowerCase();
-
-		var ThreeFont = this;
-
-		ThreeFont.faces[ family ] = ThreeFont.faces[ family ] || {};
-
-		ThreeFont.faces[ family ][ data.cssFontWeight ] = ThreeFont.faces[ family ][ data.cssFontWeight ] || {};
-		ThreeFont.faces[ family ][ data.cssFontWeight ][ data.cssFontStyle ] = data;
-
-		ThreeFont.faces[ family ][ data.cssFontWeight ][ data.cssFontStyle ] = data;
-
-		return data;
-
-	},
-
-	drawText: function ( text ) {
-
-		// RenderText
-
-		var i,
-			face = this.getFace(),
-			scale = this.size / face.resolution,
-			offset = 0,
-			chars = String( text ).split( '' ),
-			length = chars.length;
-
-		var fontPaths = [];
-
-		for ( i = 0; i < length; i ++ ) {
-
-			var path = new THREE.Path();
-
-			var ret = this.extractGlyphPoints( chars[ i ], face, scale, offset, path );
-			offset += ret.offset;
-
-			fontPaths.push( ret.path );
-
-		}
-
-		// get the width
-
-		var width = offset / 2;
-		//
-		// for ( p = 0; p < allPts.length; p++ ) {
-		//
-		// 	allPts[ p ].x -= width;
-		//
-		// }
-
-		//var extract = this.extractPoints( allPts, characterPts );
-		//extract.contour = allPts;
-
-		//extract.paths = fontPaths;
-		//extract.offset = width;
-
-		return { paths: fontPaths, offset: width };
-
-	},
-
-
-
-
-	extractGlyphPoints: function ( c, face, scale, offset, path ) {
-
-		var pts = [];
-
-		var b2 = THREE.ShapeUtils.b2;
-		var b3 = THREE.ShapeUtils.b3;
-
-		var i, i2, divisions,
-			outline, action, length,
-			scaleX, scaleY,
-			x, y, cpx, cpy, cpx0, cpy0, cpx1, cpy1, cpx2, cpy2,
-			laste,
-			glyph = face.glyphs[ c ] || face.glyphs[ '?' ];
-
-		if ( ! glyph ) return;
-
-		if ( glyph.o ) {
-
-			outline = glyph._cachedOutline || ( glyph._cachedOutline = glyph.o.split( ' ' ) );
-			length = outline.length;
-
-			scaleX = scale;
-			scaleY = scale;
-
-			for ( i = 0; i < length; ) {
-
-				action = outline[ i ++ ];
-
-				//console.log( action );
-
-				switch ( action ) {
-
-				case 'm':
-
-					// Move To
-
-					x = outline[ i ++ ] * scaleX + offset;
-					y = outline[ i ++ ] * scaleY;
-
-					path.moveTo( x, y );
-					break;
-
-				case 'l':
-
-					// Line To
-
-					x = outline[ i ++ ] * scaleX + offset;
-					y = outline[ i ++ ] * scaleY;
-					path.lineTo( x, y );
-					break;
-
-				case 'q':
-
-					// QuadraticCurveTo
-
-					cpx  = outline[ i ++ ] * scaleX + offset;
-					cpy  = outline[ i ++ ] * scaleY;
-					cpx1 = outline[ i ++ ] * scaleX + offset;
-					cpy1 = outline[ i ++ ] * scaleY;
-
-					path.quadraticCurveTo( cpx1, cpy1, cpx, cpy );
-
-					laste = pts[ pts.length - 1 ];
-
-					if ( laste ) {
-
-						cpx0 = laste.x;
-						cpy0 = laste.y;
-
-						for ( i2 = 1, divisions = this.divisions; i2 <= divisions; i2 ++ ) {
-
-							var t = i2 / divisions;
-							b2( t, cpx0, cpx1, cpx );
-							b2( t, cpy0, cpy1, cpy );
-
-						}
-
-					}
-
-					break;
-
-				case 'b':
-
-					// Cubic Bezier Curve
-
-					cpx  = outline[ i ++ ] * scaleX + offset;
-					cpy  = outline[ i ++ ] * scaleY;
-					cpx1 = outline[ i ++ ] * scaleX + offset;
-					cpy1 = outline[ i ++ ] * scaleY;
-					cpx2 = outline[ i ++ ] * scaleX + offset;
-					cpy2 = outline[ i ++ ] * scaleY;
-
-					path.bezierCurveTo( cpx1, cpy1, cpx2, cpy2, cpx, cpy );
-
-					laste = pts[ pts.length - 1 ];
-
-					if ( laste ) {
-
-						cpx0 = laste.x;
-						cpy0 = laste.y;
-
-						for ( i2 = 1, divisions = this.divisions; i2 <= divisions; i2 ++ ) {
-
-							var t = i2 / divisions;
-							b3( t, cpx0, cpx1, cpx2, cpx );
-							b3( t, cpy0, cpy1, cpy2, cpy );
-
-						}
-
-					}
-
-					break;
-
-				}
-
-			}
-
-		}
-
-
-
-		return { offset: glyph.ha * scale, path: path };
-
-	}
-
-};
-
-
-THREE.FontUtils.generateShapes = function ( text, parameters ) {
-
-	// Parameters
-
-	parameters = parameters || {};
-
-	var size = parameters.size !== undefined ? parameters.size : 100;
-	var curveSegments = parameters.curveSegments !== undefined ? parameters.curveSegments : 4;
-
-	var font = parameters.font !== undefined ? parameters.font : 'helvetiker';
-	var weight = parameters.weight !== undefined ? parameters.weight : 'normal';
-	var style = parameters.style !== undefined ? parameters.style : 'normal';
-
-	THREE.FontUtils.size = size;
-	THREE.FontUtils.divisions = curveSegments;
-
-	THREE.FontUtils.face = font;
-	THREE.FontUtils.weight = weight;
-	THREE.FontUtils.style = style;
-
-	// Get a Font data json object
-
-	var data = THREE.FontUtils.drawText( text );
-
-	var paths = data.paths;
-	var shapes = [];
-
-	for ( var p = 0, pl = paths.length; p < pl; p ++ ) {
-
-		Array.prototype.push.apply( shapes, paths[ p ].toShapes() );
-
-	}
-
-	return shapes;
-
-};
-
-// To use the typeface.js face files, hook up the API
-
-THREE.typeface_js = { faces: THREE.FontUtils.faces, loadFace: THREE.FontUtils.loadFace };
-if ( typeof self !== 'undefined' ) self._typeface_js = THREE.typeface_js;
-
-},{}],5:[function(require,module,exports){
-/**
- * @author zz85 / http://www.lab4games.net/zz85/blog
- * @author alteredq / http://alteredqualia.com/
- *
- * For creating 3D text geometry in three.js
- *
- * Text = 3D Text
- *
- * parameters = {
- *  size: 			<float>, 	// size of the text
- *  height: 		<float>, 	// thickness to extrude text
- *  curveSegments: 	<int>,		// number of points on the curves
- *
- *  font: 			<string>,		// font name
- *  weight: 		<string>,		// font weight (normal, bold)
- *  style: 			<string>,		// font style  (normal, italics)
- *
- *  bevelEnabled:	<bool>,			// turn on bevel
- *  bevelThickness: <float>, 		// how deep into text bevel goes
- *  bevelSize:		<float>, 		// how far from text outline is bevel
- *  }
- *
- */
-
-/*	Usage Examples
-
-	// TextGeometry wrapper
-
-	var text3d = new TextGeometry( text, options );
-
-	// Complete manner
-
-	var textShapes = THREE.FontUtils.generateShapes( text, options );
-	var text3d = new ExtrudeGeometry( textShapes, options );
-
-*/
-
-
-THREE.TextGeometry = function ( text, parameters ) {
-
-	parameters = parameters || {};
-
-	var textShapes = THREE.FontUtils.generateShapes( text, parameters );
-
-	// translate parameters to ExtrudeGeometry API
-
-	parameters.amount = parameters.height !== undefined ? parameters.height : 50;
-
-	// defaults
-
-	if ( parameters.bevelThickness === undefined ) parameters.bevelThickness = 10;
-	if ( parameters.bevelSize === undefined ) parameters.bevelSize = 8;
-	if ( parameters.bevelEnabled === undefined ) parameters.bevelEnabled = false;
-
-	THREE.ExtrudeGeometry.call( this, textShapes, parameters );
-
-	this.type = 'TextGeometry';
-
-};
-
-THREE.TextGeometry.prototype = Object.create( THREE.ExtrudeGeometry.prototype );
-THREE.TextGeometry.prototype.constructor = THREE.TextGeometry;
-
-},{}],6:[function(require,module,exports){
-if (_typeface_js && _typeface_js.loadFace) _typeface_js.loadFace({"glyphs":{"ο":{"x_min":0,"x_max":712,"ha":815,"o":"m 356 -25 q 96 88 192 -25 q 0 368 0 201 q 92 642 0 533 q 356 761 192 761 q 617 644 517 761 q 712 368 712 533 q 619 91 712 201 q 356 -25 520 -25 m 356 85 q 527 175 465 85 q 583 369 583 255 q 528 562 583 484 q 356 651 466 651 q 189 560 250 651 q 135 369 135 481 q 187 177 135 257 q 356 85 250 85 "},"S":{"x_min":0,"x_max":788,"ha":890,"o":"m 788 291 q 662 54 788 144 q 397 -26 550 -26 q 116 68 226 -26 q 0 337 0 168 l 131 337 q 200 152 131 220 q 384 85 269 85 q 557 129 479 85 q 650 270 650 183 q 490 429 650 379 q 194 513 341 470 q 33 739 33 584 q 142 964 33 881 q 388 1041 242 1041 q 644 957 543 1041 q 756 716 756 867 l 625 716 q 561 874 625 816 q 395 933 497 933 q 243 891 309 933 q 164 759 164 841 q 325 609 164 656 q 625 526 475 568 q 788 291 788 454 "},"¦":{"x_min":343,"x_max":449,"ha":792,"o":"m 449 462 l 343 462 l 343 986 l 449 986 l 449 462 m 449 -242 l 343 -242 l 343 280 l 449 280 l 449 -242 "},"/":{"x_min":183.25,"x_max":608.328125,"ha":792,"o":"m 608 1041 l 266 -129 l 183 -129 l 520 1041 l 608 1041 "},"Τ":{"x_min":-0.4375,"x_max":777.453125,"ha":839,"o":"m 777 893 l 458 893 l 458 0 l 319 0 l 319 892 l 0 892 l 0 1013 l 777 1013 l 777 893 "},"y":{"x_min":0,"x_max":684.78125,"ha":771,"o":"m 684 738 l 388 -83 q 311 -216 356 -167 q 173 -279 252 -279 q 97 -266 133 -279 l 97 -149 q 132 -155 109 -151 q 168 -160 155 -160 q 240 -114 213 -160 q 274 -26 248 -98 l 0 738 l 137 737 l 341 139 l 548 737 l 684 738 "},"Π":{"x_min":0,"x_max":803,"ha":917,"o":"m 803 0 l 667 0 l 667 886 l 140 886 l 140 0 l 0 0 l 0 1012 l 803 1012 l 803 0 "},"ΐ":{"x_min":-111,"x_max":339,"ha":361,"o":"m 339 800 l 229 800 l 229 925 l 339 925 l 339 800 m -1 800 l -111 800 l -111 925 l -1 925 l -1 800 m 284 3 q 233 -10 258 -5 q 182 -15 207 -15 q 85 26 119 -15 q 42 200 42 79 l 42 737 l 167 737 l 168 215 q 172 141 168 157 q 226 101 183 101 q 248 103 239 101 q 284 112 257 104 l 284 3 m 302 1040 l 113 819 l 30 819 l 165 1040 l 302 1040 "},"g":{"x_min":0,"x_max":686,"ha":838,"o":"m 686 34 q 586 -213 686 -121 q 331 -306 487 -306 q 131 -252 216 -306 q 31 -84 31 -190 l 155 -84 q 228 -174 166 -138 q 345 -207 284 -207 q 514 -109 454 -207 q 564 89 564 -27 q 461 6 521 36 q 335 -23 401 -23 q 88 100 184 -23 q 0 370 0 215 q 87 634 0 522 q 330 758 183 758 q 457 728 398 758 q 564 644 515 699 l 564 737 l 686 737 l 686 34 m 582 367 q 529 560 582 481 q 358 652 468 652 q 189 561 250 652 q 135 369 135 482 q 189 176 135 255 q 361 85 251 85 q 529 176 468 85 q 582 367 582 255 "},"²":{"x_min":0,"x_max":442,"ha":539,"o":"m 442 383 l 0 383 q 91 566 0 492 q 260 668 176 617 q 354 798 354 727 q 315 875 354 845 q 227 905 277 905 q 136 869 173 905 q 99 761 99 833 l 14 761 q 82 922 14 864 q 232 974 141 974 q 379 926 316 974 q 442 797 442 878 q 351 635 442 704 q 183 539 321 611 q 92 455 92 491 l 442 455 l 442 383 "},"–":{"x_min":0,"x_max":705.5625,"ha":803,"o":"m 705 334 l 0 334 l 0 410 l 705 410 l 705 334 "},"Κ":{"x_min":0,"x_max":819.5625,"ha":893,"o":"m 819 0 l 650 0 l 294 509 l 139 356 l 139 0 l 0 0 l 0 1013 l 139 1013 l 139 526 l 626 1013 l 809 1013 l 395 600 l 819 0 "},"ƒ":{"x_min":-46.265625,"x_max":392,"ha":513,"o":"m 392 651 l 259 651 l 79 -279 l -46 -278 l 134 651 l 14 651 l 14 751 l 135 751 q 151 948 135 900 q 304 1041 185 1041 q 334 1040 319 1041 q 392 1034 348 1039 l 392 922 q 337 931 360 931 q 271 883 287 931 q 260 793 260 853 l 260 751 l 392 751 l 392 651 "},"e":{"x_min":0,"x_max":714,"ha":813,"o":"m 714 326 l 140 326 q 200 157 140 227 q 359 87 260 87 q 488 130 431 87 q 561 245 545 174 l 697 245 q 577 48 670 123 q 358 -26 484 -26 q 97 85 195 -26 q 0 363 0 197 q 94 642 0 529 q 358 765 195 765 q 626 627 529 765 q 714 326 714 503 m 576 429 q 507 583 564 522 q 355 650 445 650 q 206 583 266 650 q 140 429 152 522 l 576 429 "},"ό":{"x_min":0,"x_max":712,"ha":815,"o":"m 356 -25 q 94 91 194 -25 q 0 368 0 202 q 92 642 0 533 q 356 761 192 761 q 617 644 517 761 q 712 368 712 533 q 619 91 712 201 q 356 -25 520 -25 m 356 85 q 527 175 465 85 q 583 369 583 255 q 528 562 583 484 q 356 651 466 651 q 189 560 250 651 q 135 369 135 481 q 187 177 135 257 q 356 85 250 85 m 576 1040 l 387 819 l 303 819 l 438 1040 l 576 1040 "},"J":{"x_min":0,"x_max":588,"ha":699,"o":"m 588 279 q 287 -26 588 -26 q 58 73 126 -26 q 0 327 0 158 l 133 327 q 160 172 133 227 q 288 96 198 96 q 426 171 391 96 q 449 336 449 219 l 449 1013 l 588 1013 l 588 279 "},"»":{"x_min":-1,"x_max":503,"ha":601,"o":"m 503 302 l 280 136 l 281 256 l 429 373 l 281 486 l 280 608 l 503 440 l 503 302 m 221 302 l 0 136 l 0 255 l 145 372 l 0 486 l -1 608 l 221 440 l 221 302 "},"©":{"x_min":-3,"x_max":1008,"ha":1106,"o":"m 502 -7 q 123 151 263 -7 q -3 501 -3 294 q 123 851 -3 706 q 502 1011 263 1011 q 881 851 739 1011 q 1008 501 1008 708 q 883 151 1008 292 q 502 -7 744 -7 m 502 60 q 830 197 709 60 q 940 501 940 322 q 831 805 940 681 q 502 944 709 944 q 174 805 296 944 q 65 501 65 680 q 173 197 65 320 q 502 60 294 60 m 741 394 q 661 246 731 302 q 496 190 591 190 q 294 285 369 190 q 228 497 228 370 q 295 714 228 625 q 499 813 370 813 q 656 762 588 813 q 733 625 724 711 l 634 625 q 589 704 629 673 q 498 735 550 735 q 377 666 421 735 q 334 504 334 597 q 374 340 334 408 q 490 272 415 272 q 589 304 549 272 q 638 394 628 337 l 741 394 "},"ώ":{"x_min":0,"x_max":922,"ha":1030,"o":"m 687 1040 l 498 819 l 415 819 l 549 1040 l 687 1040 m 922 339 q 856 97 922 203 q 650 -26 780 -26 q 538 9 587 -26 q 461 103 489 44 q 387 12 436 46 q 277 -22 339 -22 q 69 97 147 -22 q 0 338 0 202 q 45 551 0 444 q 161 737 84 643 l 302 737 q 175 552 219 647 q 124 336 124 446 q 155 179 124 248 q 275 88 197 88 q 375 163 341 88 q 400 294 400 219 l 400 572 l 524 572 l 524 294 q 561 135 524 192 q 643 88 591 88 q 762 182 719 88 q 797 341 797 257 q 745 555 797 450 q 619 737 705 637 l 760 737 q 874 551 835 640 q 922 339 922 444 "},"^":{"x_min":193.0625,"x_max":598.609375,"ha":792,"o":"m 598 772 l 515 772 l 395 931 l 277 772 l 193 772 l 326 1013 l 462 1013 l 598 772 "},"«":{"x_min":0,"x_max":507.203125,"ha":604,"o":"m 506 136 l 284 302 l 284 440 l 506 608 l 507 485 l 360 371 l 506 255 l 506 136 m 222 136 l 0 302 l 0 440 l 222 608 l 221 486 l 73 373 l 222 256 l 222 136 "},"D":{"x_min":0,"x_max":828,"ha":935,"o":"m 389 1013 q 714 867 593 1013 q 828 521 828 729 q 712 161 828 309 q 382 0 587 0 l 0 0 l 0 1013 l 389 1013 m 376 124 q 607 247 523 124 q 681 510 681 355 q 607 771 681 662 q 376 896 522 896 l 139 896 l 139 124 l 376 124 "},"∙":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 585 l 0 585 l 0 738 l 142 738 l 142 585 "},"ÿ":{"x_min":0,"x_max":47,"ha":125,"o":"m 47 3 q 37 -7 47 -7 q 28 0 30 -7 q 39 -4 32 -4 q 45 3 45 -1 l 37 0 q 28 9 28 0 q 39 19 28 19 l 47 16 l 47 19 l 47 3 m 37 1 q 44 8 44 1 q 37 16 44 16 q 30 8 30 16 q 37 1 30 1 m 26 1 l 23 22 l 14 0 l 3 22 l 3 3 l 0 25 l 13 1 l 22 25 l 26 1 "},"w":{"x_min":0,"x_max":1009.71875,"ha":1100,"o":"m 1009 738 l 783 0 l 658 0 l 501 567 l 345 0 l 222 0 l 0 738 l 130 738 l 284 174 l 432 737 l 576 738 l 721 173 l 881 737 l 1009 738 "},"$":{"x_min":0,"x_max":700,"ha":793,"o":"m 664 717 l 542 717 q 490 825 531 785 q 381 872 450 865 l 381 551 q 620 446 540 522 q 700 241 700 370 q 618 45 700 116 q 381 -25 536 -25 l 381 -152 l 307 -152 l 307 -25 q 81 62 162 -25 q 0 297 0 149 l 124 297 q 169 146 124 204 q 307 81 215 89 l 307 441 q 80 536 148 469 q 13 725 13 603 q 96 910 13 839 q 307 982 180 982 l 307 1077 l 381 1077 l 381 982 q 574 917 494 982 q 664 717 664 845 m 307 565 l 307 872 q 187 831 233 872 q 142 724 142 791 q 180 618 142 656 q 307 565 218 580 m 381 76 q 562 237 562 96 q 517 361 562 313 q 381 423 472 409 l 381 76 "},"\\":{"x_min":-0.015625,"x_max":425.0625,"ha":522,"o":"m 425 -129 l 337 -129 l 0 1041 l 83 1041 l 425 -129 "},"µ":{"x_min":0,"x_max":697.21875,"ha":747,"o":"m 697 -4 q 629 -14 658 -14 q 498 97 513 -14 q 422 9 470 41 q 313 -23 374 -23 q 207 4 258 -23 q 119 81 156 32 l 119 -278 l 0 -278 l 0 738 l 124 738 l 124 343 q 165 173 124 246 q 308 83 216 83 q 452 178 402 83 q 493 359 493 255 l 493 738 l 617 738 l 617 214 q 623 136 617 160 q 673 92 637 92 q 697 96 684 92 l 697 -4 "},"Ι":{"x_min":42,"x_max":181,"ha":297,"o":"m 181 0 l 42 0 l 42 1013 l 181 1013 l 181 0 "},"Ύ":{"x_min":0,"x_max":1144.5,"ha":1214,"o":"m 1144 1012 l 807 416 l 807 0 l 667 0 l 667 416 l 325 1012 l 465 1012 l 736 533 l 1004 1012 l 1144 1012 m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 "},"’":{"x_min":0,"x_max":139,"ha":236,"o":"m 139 851 q 102 737 139 784 q 0 669 65 690 l 0 734 q 59 787 42 741 q 72 873 72 821 l 0 873 l 0 1013 l 139 1013 l 139 851 "},"Ν":{"x_min":0,"x_max":801,"ha":915,"o":"m 801 0 l 651 0 l 131 822 l 131 0 l 0 0 l 0 1013 l 151 1013 l 670 191 l 670 1013 l 801 1013 l 801 0 "},"-":{"x_min":8.71875,"x_max":350.390625,"ha":478,"o":"m 350 317 l 8 317 l 8 428 l 350 428 l 350 317 "},"Q":{"x_min":0,"x_max":968,"ha":1072,"o":"m 954 5 l 887 -79 l 744 35 q 622 -11 687 2 q 483 -26 556 -26 q 127 130 262 -26 q 0 504 0 279 q 127 880 0 728 q 484 1041 262 1041 q 841 884 708 1041 q 968 507 968 735 q 933 293 968 398 q 832 104 899 188 l 954 5 m 723 191 q 802 330 777 248 q 828 499 828 412 q 744 790 828 673 q 483 922 650 922 q 228 791 322 922 q 142 505 142 673 q 227 221 142 337 q 487 91 323 91 q 632 123 566 91 l 520 215 l 587 301 l 723 191 "},"ς":{"x_min":1,"x_max":676.28125,"ha":740,"o":"m 676 460 l 551 460 q 498 595 542 546 q 365 651 448 651 q 199 578 263 651 q 136 401 136 505 q 266 178 136 241 q 508 106 387 142 q 640 -50 640 62 q 625 -158 640 -105 q 583 -278 611 -211 l 465 -278 q 498 -182 490 -211 q 515 -80 515 -126 q 381 12 515 -15 q 134 91 197 51 q 1 388 1 179 q 100 651 1 542 q 354 761 199 761 q 587 680 498 761 q 676 460 676 599 "},"M":{"x_min":0,"x_max":954,"ha":1067,"o":"m 954 0 l 819 0 l 819 869 l 537 0 l 405 0 l 128 866 l 128 0 l 0 0 l 0 1013 l 200 1013 l 472 160 l 757 1013 l 954 1013 l 954 0 "},"Ψ":{"x_min":0,"x_max":1006,"ha":1094,"o":"m 1006 678 q 914 319 1006 429 q 571 200 814 200 l 571 0 l 433 0 l 433 200 q 92 319 194 200 q 0 678 0 429 l 0 1013 l 139 1013 l 139 679 q 191 417 139 492 q 433 326 255 326 l 433 1013 l 571 1013 l 571 326 l 580 326 q 813 423 747 326 q 868 679 868 502 l 868 1013 l 1006 1013 l 1006 678 "},"C":{"x_min":0,"x_max":886,"ha":944,"o":"m 886 379 q 760 87 886 201 q 455 -26 634 -26 q 112 136 236 -26 q 0 509 0 283 q 118 882 0 737 q 469 1041 245 1041 q 748 955 630 1041 q 879 708 879 859 l 745 708 q 649 862 724 805 q 473 920 573 920 q 219 791 312 920 q 136 509 136 675 q 217 229 136 344 q 470 99 311 99 q 672 179 591 99 q 753 379 753 259 l 886 379 "},"!":{"x_min":0,"x_max":138,"ha":236,"o":"m 138 684 q 116 409 138 629 q 105 244 105 299 l 33 244 q 16 465 33 313 q 0 684 0 616 l 0 1013 l 138 1013 l 138 684 m 138 0 l 0 0 l 0 151 l 138 151 l 138 0 "},"{":{"x_min":0,"x_max":480.5625,"ha":578,"o":"m 480 -286 q 237 -213 303 -286 q 187 -45 187 -159 q 194 48 187 -15 q 201 141 201 112 q 164 264 201 225 q 0 314 118 314 l 0 417 q 164 471 119 417 q 201 605 201 514 q 199 665 201 644 q 193 772 193 769 q 241 941 193 887 q 480 1015 308 1015 l 480 915 q 336 866 375 915 q 306 742 306 828 q 310 662 306 717 q 314 577 314 606 q 288 452 314 500 q 176 365 256 391 q 289 275 257 337 q 314 143 314 226 q 313 84 314 107 q 310 -11 310 -5 q 339 -131 310 -94 q 480 -182 377 -182 l 480 -286 "},"X":{"x_min":-0.015625,"x_max":854.15625,"ha":940,"o":"m 854 0 l 683 0 l 423 409 l 166 0 l 0 0 l 347 519 l 18 1013 l 186 1013 l 428 637 l 675 1013 l 836 1013 l 504 520 l 854 0 "},"#":{"x_min":0,"x_max":963.890625,"ha":1061,"o":"m 963 690 l 927 590 l 719 590 l 655 410 l 876 410 l 840 310 l 618 310 l 508 -3 l 393 -2 l 506 309 l 329 310 l 215 -2 l 102 -3 l 212 310 l 0 310 l 36 410 l 248 409 l 312 590 l 86 590 l 120 690 l 347 690 l 459 1006 l 573 1006 l 462 690 l 640 690 l 751 1006 l 865 1006 l 754 690 l 963 690 m 606 590 l 425 590 l 362 410 l 543 410 l 606 590 "},"ι":{"x_min":42,"x_max":284,"ha":361,"o":"m 284 3 q 233 -10 258 -5 q 182 -15 207 -15 q 85 26 119 -15 q 42 200 42 79 l 42 738 l 167 738 l 168 215 q 172 141 168 157 q 226 101 183 101 q 248 103 239 101 q 284 112 257 104 l 284 3 "},"Ά":{"x_min":0,"x_max":906.953125,"ha":982,"o":"m 283 1040 l 88 799 l 5 799 l 145 1040 l 283 1040 m 906 0 l 756 0 l 650 303 l 251 303 l 143 0 l 0 0 l 376 1012 l 529 1012 l 906 0 m 609 421 l 452 866 l 293 421 l 609 421 "},")":{"x_min":0,"x_max":318,"ha":415,"o":"m 318 365 q 257 25 318 191 q 87 -290 197 -141 l 0 -290 q 140 21 93 -128 q 193 360 193 189 q 141 704 193 537 q 0 1024 97 850 l 87 1024 q 257 706 197 871 q 318 365 318 542 "},"ε":{"x_min":0,"x_max":634.71875,"ha":714,"o":"m 634 234 q 527 38 634 110 q 300 -25 433 -25 q 98 29 183 -25 q 0 204 0 93 q 37 314 0 265 q 128 390 67 353 q 56 460 82 419 q 26 555 26 505 q 114 712 26 654 q 295 763 191 763 q 499 700 416 763 q 589 515 589 631 l 478 515 q 419 618 464 580 q 307 657 374 657 q 207 630 253 657 q 151 547 151 598 q 238 445 151 469 q 389 434 280 434 l 389 331 l 349 331 q 206 315 255 331 q 125 210 125 287 q 183 107 125 145 q 302 76 233 76 q 436 117 379 76 q 509 234 493 159 l 634 234 "},"Δ":{"x_min":0,"x_max":952.78125,"ha":1028,"o":"m 952 0 l 0 0 l 400 1013 l 551 1013 l 952 0 m 762 124 l 476 867 l 187 124 l 762 124 "},"}":{"x_min":0,"x_max":481,"ha":578,"o":"m 481 314 q 318 262 364 314 q 282 136 282 222 q 284 65 282 97 q 293 -58 293 -48 q 241 -217 293 -166 q 0 -286 174 -286 l 0 -182 q 143 -130 105 -182 q 171 -2 171 -93 q 168 81 171 22 q 165 144 165 140 q 188 275 165 229 q 306 365 220 339 q 191 455 224 391 q 165 588 165 505 q 168 681 165 624 q 171 742 171 737 q 141 865 171 827 q 0 915 102 915 l 0 1015 q 243 942 176 1015 q 293 773 293 888 q 287 675 293 741 q 282 590 282 608 q 318 466 282 505 q 481 417 364 417 l 481 314 "},"‰":{"x_min":-3,"x_max":1672,"ha":1821,"o":"m 846 0 q 664 76 732 0 q 603 244 603 145 q 662 412 603 344 q 846 489 729 489 q 1027 412 959 489 q 1089 244 1089 343 q 1029 76 1089 144 q 846 0 962 0 m 845 103 q 945 143 910 103 q 981 243 981 184 q 947 340 981 301 q 845 385 910 385 q 745 342 782 385 q 709 243 709 300 q 742 147 709 186 q 845 103 781 103 m 888 986 l 284 -25 l 199 -25 l 803 986 l 888 986 m 241 468 q 58 545 126 468 q -3 715 -3 615 q 56 881 -3 813 q 238 958 124 958 q 421 881 353 958 q 483 712 483 813 q 423 544 483 612 q 241 468 356 468 m 241 855 q 137 811 175 855 q 100 710 100 768 q 136 612 100 653 q 240 572 172 572 q 344 614 306 572 q 382 713 382 656 q 347 810 382 771 q 241 855 308 855 m 1428 0 q 1246 76 1314 0 q 1185 244 1185 145 q 1244 412 1185 344 q 1428 489 1311 489 q 1610 412 1542 489 q 1672 244 1672 343 q 1612 76 1672 144 q 1428 0 1545 0 m 1427 103 q 1528 143 1492 103 q 1564 243 1564 184 q 1530 340 1564 301 q 1427 385 1492 385 q 1327 342 1364 385 q 1291 243 1291 300 q 1324 147 1291 186 q 1427 103 1363 103 "},"a":{"x_min":0,"x_max":698.609375,"ha":794,"o":"m 698 0 q 661 -12 679 -7 q 615 -17 643 -17 q 536 12 564 -17 q 500 96 508 41 q 384 6 456 37 q 236 -25 312 -25 q 65 31 130 -25 q 0 194 0 88 q 118 390 0 334 q 328 435 180 420 q 488 483 476 451 q 495 523 495 504 q 442 619 495 584 q 325 654 389 654 q 209 617 257 654 q 152 513 161 580 l 33 513 q 123 705 33 633 q 332 772 207 772 q 528 712 448 772 q 617 531 617 645 l 617 163 q 624 108 617 126 q 664 90 632 90 l 698 94 l 698 0 m 491 262 l 491 372 q 272 329 350 347 q 128 201 128 294 q 166 113 128 144 q 264 83 205 83 q 414 130 346 83 q 491 262 491 183 "},"—":{"x_min":0,"x_max":941.671875,"ha":1039,"o":"m 941 334 l 0 334 l 0 410 l 941 410 l 941 334 "},"=":{"x_min":8.71875,"x_max":780.953125,"ha":792,"o":"m 780 510 l 8 510 l 8 606 l 780 606 l 780 510 m 780 235 l 8 235 l 8 332 l 780 332 l 780 235 "},"N":{"x_min":0,"x_max":801,"ha":914,"o":"m 801 0 l 651 0 l 131 823 l 131 0 l 0 0 l 0 1013 l 151 1013 l 670 193 l 670 1013 l 801 1013 l 801 0 "},"ρ":{"x_min":0,"x_max":712,"ha":797,"o":"m 712 369 q 620 94 712 207 q 362 -26 521 -26 q 230 2 292 -26 q 119 83 167 30 l 119 -278 l 0 -278 l 0 362 q 91 643 0 531 q 355 764 190 764 q 617 647 517 764 q 712 369 712 536 m 583 366 q 530 559 583 480 q 359 651 469 651 q 190 562 252 651 q 135 370 135 483 q 189 176 135 257 q 359 85 250 85 q 528 175 466 85 q 583 366 583 254 "},"2":{"x_min":59,"x_max":731,"ha":792,"o":"m 731 0 l 59 0 q 197 314 59 188 q 457 487 199 315 q 598 691 598 580 q 543 819 598 772 q 411 867 488 867 q 272 811 328 867 q 209 630 209 747 l 81 630 q 182 901 81 805 q 408 986 271 986 q 629 909 536 986 q 731 694 731 826 q 613 449 731 541 q 378 316 495 383 q 201 122 235 234 l 731 122 l 731 0 "},"¯":{"x_min":0,"x_max":941.671875,"ha":938,"o":"m 941 1033 l 0 1033 l 0 1109 l 941 1109 l 941 1033 "},"Z":{"x_min":0,"x_max":779,"ha":849,"o":"m 779 0 l 0 0 l 0 113 l 621 896 l 40 896 l 40 1013 l 779 1013 l 778 887 l 171 124 l 779 124 l 779 0 "},"u":{"x_min":0,"x_max":617,"ha":729,"o":"m 617 0 l 499 0 l 499 110 q 391 10 460 45 q 246 -25 322 -25 q 61 58 127 -25 q 0 258 0 136 l 0 738 l 125 738 l 125 284 q 156 148 125 202 q 273 82 197 82 q 433 165 369 82 q 493 340 493 243 l 493 738 l 617 738 l 617 0 "},"k":{"x_min":0,"x_max":612.484375,"ha":697,"o":"m 612 738 l 338 465 l 608 0 l 469 0 l 251 382 l 121 251 l 121 0 l 0 0 l 0 1013 l 121 1013 l 121 402 l 456 738 l 612 738 "},"Η":{"x_min":0,"x_max":803,"ha":917,"o":"m 803 0 l 667 0 l 667 475 l 140 475 l 140 0 l 0 0 l 0 1013 l 140 1013 l 140 599 l 667 599 l 667 1013 l 803 1013 l 803 0 "},"Α":{"x_min":0,"x_max":906.953125,"ha":985,"o":"m 906 0 l 756 0 l 650 303 l 251 303 l 143 0 l 0 0 l 376 1013 l 529 1013 l 906 0 m 609 421 l 452 866 l 293 421 l 609 421 "},"s":{"x_min":0,"x_max":604,"ha":697,"o":"m 604 217 q 501 36 604 104 q 292 -23 411 -23 q 86 43 166 -23 q 0 238 0 114 l 121 237 q 175 122 121 164 q 300 85 223 85 q 415 112 363 85 q 479 207 479 147 q 361 309 479 276 q 140 372 141 370 q 21 544 21 426 q 111 708 21 647 q 298 761 190 761 q 492 705 413 761 q 583 531 583 643 l 462 531 q 412 625 462 594 q 298 657 363 657 q 199 636 242 657 q 143 558 143 608 q 262 454 143 486 q 484 394 479 397 q 604 217 604 341 "},"B":{"x_min":0,"x_max":778,"ha":876,"o":"m 580 546 q 724 469 670 535 q 778 311 778 403 q 673 83 778 171 q 432 0 575 0 l 0 0 l 0 1013 l 411 1013 q 629 957 541 1013 q 732 768 732 892 q 691 633 732 693 q 580 546 650 572 m 393 899 l 139 899 l 139 588 l 379 588 q 521 624 462 588 q 592 744 592 667 q 531 859 592 819 q 393 899 471 899 m 419 124 q 566 169 504 124 q 635 303 635 219 q 559 436 635 389 q 402 477 494 477 l 139 477 l 139 124 l 419 124 "},"…":{"x_min":0,"x_max":614,"ha":708,"o":"m 142 0 l 0 0 l 0 151 l 142 151 l 142 0 m 378 0 l 236 0 l 236 151 l 378 151 l 378 0 m 614 0 l 472 0 l 472 151 l 614 151 l 614 0 "},"?":{"x_min":0,"x_max":607,"ha":704,"o":"m 607 777 q 543 599 607 674 q 422 474 482 537 q 357 272 357 391 l 236 272 q 297 487 236 395 q 411 619 298 490 q 474 762 474 691 q 422 885 474 838 q 301 933 371 933 q 179 880 228 933 q 124 706 124 819 l 0 706 q 94 963 0 872 q 302 1044 177 1044 q 511 973 423 1044 q 607 777 607 895 m 370 0 l 230 0 l 230 151 l 370 151 l 370 0 "},"H":{"x_min":0,"x_max":803,"ha":915,"o":"m 803 0 l 667 0 l 667 475 l 140 475 l 140 0 l 0 0 l 0 1013 l 140 1013 l 140 599 l 667 599 l 667 1013 l 803 1013 l 803 0 "},"ν":{"x_min":0,"x_max":675,"ha":761,"o":"m 675 738 l 404 0 l 272 0 l 0 738 l 133 738 l 340 147 l 541 738 l 675 738 "},"c":{"x_min":1,"x_max":701.390625,"ha":775,"o":"m 701 264 q 584 53 681 133 q 353 -26 487 -26 q 91 91 188 -26 q 1 370 1 201 q 92 645 1 537 q 353 761 190 761 q 572 688 479 761 q 690 493 666 615 l 556 493 q 487 606 545 562 q 356 650 428 650 q 186 563 246 650 q 134 372 134 487 q 188 179 134 258 q 359 88 250 88 q 492 136 437 88 q 566 264 548 185 l 701 264 "},"¶":{"x_min":0,"x_max":566.671875,"ha":678,"o":"m 21 892 l 52 892 l 98 761 l 145 892 l 176 892 l 178 741 l 157 741 l 157 867 l 108 741 l 88 741 l 40 871 l 40 741 l 21 741 l 21 892 m 308 854 l 308 731 q 252 691 308 691 q 227 691 240 691 q 207 696 213 695 l 207 712 l 253 706 q 288 733 288 706 l 288 763 q 244 741 279 741 q 193 797 193 741 q 261 860 193 860 q 287 860 273 860 q 308 854 302 855 m 288 842 l 263 843 q 213 796 213 843 q 248 756 213 756 q 288 796 288 756 l 288 842 m 566 988 l 502 988 l 502 -1 l 439 -1 l 439 988 l 317 988 l 317 -1 l 252 -1 l 252 602 q 81 653 155 602 q 0 805 0 711 q 101 989 0 918 q 309 1053 194 1053 l 566 1053 l 566 988 "},"β":{"x_min":0,"x_max":660,"ha":745,"o":"m 471 550 q 610 450 561 522 q 660 280 660 378 q 578 64 660 151 q 367 -22 497 -22 q 239 5 299 -22 q 126 82 178 32 l 126 -278 l 0 -278 l 0 593 q 54 903 0 801 q 318 1042 127 1042 q 519 964 436 1042 q 603 771 603 887 q 567 644 603 701 q 471 550 532 586 m 337 79 q 476 138 418 79 q 535 279 535 198 q 427 437 535 386 q 226 477 344 477 l 226 583 q 398 620 329 583 q 486 762 486 668 q 435 884 486 833 q 312 935 384 935 q 169 861 219 935 q 126 698 126 797 l 126 362 q 170 169 126 242 q 337 79 224 79 "},"Μ":{"x_min":0,"x_max":954,"ha":1068,"o":"m 954 0 l 819 0 l 819 868 l 537 0 l 405 0 l 128 865 l 128 0 l 0 0 l 0 1013 l 199 1013 l 472 158 l 758 1013 l 954 1013 l 954 0 "},"Ό":{"x_min":0.109375,"x_max":1120,"ha":1217,"o":"m 1120 505 q 994 132 1120 282 q 642 -29 861 -29 q 290 130 422 -29 q 167 505 167 280 q 294 883 167 730 q 650 1046 430 1046 q 999 882 868 1046 q 1120 505 1120 730 m 977 504 q 896 784 977 669 q 644 915 804 915 q 391 785 484 915 q 307 504 307 669 q 391 224 307 339 q 644 95 486 95 q 894 224 803 95 q 977 504 977 339 m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 "},"Ή":{"x_min":0,"x_max":1158,"ha":1275,"o":"m 1158 0 l 1022 0 l 1022 475 l 496 475 l 496 0 l 356 0 l 356 1012 l 496 1012 l 496 599 l 1022 599 l 1022 1012 l 1158 1012 l 1158 0 m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 "},"•":{"x_min":0,"x_max":663.890625,"ha":775,"o":"m 663 529 q 566 293 663 391 q 331 196 469 196 q 97 294 194 196 q 0 529 0 393 q 96 763 0 665 q 331 861 193 861 q 566 763 469 861 q 663 529 663 665 "},"¥":{"x_min":0.1875,"x_max":819.546875,"ha":886,"o":"m 563 561 l 697 561 l 696 487 l 520 487 l 482 416 l 482 380 l 697 380 l 695 308 l 482 308 l 482 0 l 342 0 l 342 308 l 125 308 l 125 380 l 342 380 l 342 417 l 303 487 l 125 487 l 125 561 l 258 561 l 0 1013 l 140 1013 l 411 533 l 679 1013 l 819 1013 l 563 561 "},"(":{"x_min":0,"x_max":318.0625,"ha":415,"o":"m 318 -290 l 230 -290 q 61 23 122 -142 q 0 365 0 190 q 62 712 0 540 q 230 1024 119 869 l 318 1024 q 175 705 219 853 q 125 360 125 542 q 176 22 125 187 q 318 -290 223 -127 "},"U":{"x_min":0,"x_max":796,"ha":904,"o":"m 796 393 q 681 93 796 212 q 386 -25 566 -25 q 101 95 208 -25 q 0 393 0 211 l 0 1013 l 138 1013 l 138 391 q 204 191 138 270 q 394 107 276 107 q 586 191 512 107 q 656 391 656 270 l 656 1013 l 796 1013 l 796 393 "},"γ":{"x_min":0.5,"x_max":744.953125,"ha":822,"o":"m 744 737 l 463 54 l 463 -278 l 338 -278 l 338 54 l 154 495 q 104 597 124 569 q 13 651 67 651 l 0 651 l 0 751 l 39 753 q 168 711 121 753 q 242 594 207 676 l 403 208 l 617 737 l 744 737 "},"α":{"x_min":0,"x_max":765.5625,"ha":809,"o":"m 765 -4 q 698 -14 726 -14 q 564 97 586 -14 q 466 7 525 40 q 337 -26 407 -26 q 88 98 186 -26 q 0 369 0 212 q 88 637 0 525 q 337 760 184 760 q 465 728 407 760 q 563 637 524 696 l 563 739 l 685 739 l 685 222 q 693 141 685 168 q 748 94 708 94 q 765 96 760 94 l 765 -4 m 584 371 q 531 562 584 485 q 360 653 470 653 q 192 566 254 653 q 135 379 135 489 q 186 181 135 261 q 358 84 247 84 q 528 176 465 84 q 584 371 584 260 "},"F":{"x_min":0,"x_max":683.328125,"ha":717,"o":"m 683 888 l 140 888 l 140 583 l 613 583 l 613 458 l 140 458 l 140 0 l 0 0 l 0 1013 l 683 1013 l 683 888 "},"­":{"x_min":0,"x_max":705.5625,"ha":803,"o":"m 705 334 l 0 334 l 0 410 l 705 410 l 705 334 "},":":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 585 l 0 585 l 0 738 l 142 738 l 142 585 m 142 0 l 0 0 l 0 151 l 142 151 l 142 0 "},"Χ":{"x_min":0,"x_max":854.171875,"ha":935,"o":"m 854 0 l 683 0 l 423 409 l 166 0 l 0 0 l 347 519 l 18 1013 l 186 1013 l 427 637 l 675 1013 l 836 1013 l 504 521 l 854 0 "},"*":{"x_min":116,"x_max":674,"ha":792,"o":"m 674 768 l 475 713 l 610 544 l 517 477 l 394 652 l 272 478 l 178 544 l 314 713 l 116 766 l 153 876 l 341 812 l 342 1013 l 446 1013 l 446 811 l 635 874 l 674 768 "},"†":{"x_min":0,"x_max":777,"ha":835,"o":"m 458 804 l 777 804 l 777 683 l 458 683 l 458 0 l 319 0 l 319 681 l 0 683 l 0 804 l 319 804 l 319 1015 l 458 1013 l 458 804 "},"°":{"x_min":0,"x_max":347,"ha":444,"o":"m 173 802 q 43 856 91 802 q 0 977 0 905 q 45 1101 0 1049 q 173 1153 90 1153 q 303 1098 255 1153 q 347 977 347 1049 q 303 856 347 905 q 173 802 256 802 m 173 884 q 238 910 214 884 q 262 973 262 937 q 239 1038 262 1012 q 173 1064 217 1064 q 108 1037 132 1064 q 85 973 85 1010 q 108 910 85 937 q 173 884 132 884 "},"V":{"x_min":0,"x_max":862.71875,"ha":940,"o":"m 862 1013 l 505 0 l 361 0 l 0 1013 l 143 1013 l 434 165 l 718 1012 l 862 1013 "},"Ξ":{"x_min":0,"x_max":734.71875,"ha":763,"o":"m 723 889 l 9 889 l 9 1013 l 723 1013 l 723 889 m 673 463 l 61 463 l 61 589 l 673 589 l 673 463 m 734 0 l 0 0 l 0 124 l 734 124 l 734 0 "}," ":{"x_min":0,"x_max":0,"ha":853},"Ϋ":{"x_min":0.328125,"x_max":819.515625,"ha":889,"o":"m 588 1046 l 460 1046 l 460 1189 l 588 1189 l 588 1046 m 360 1046 l 232 1046 l 232 1189 l 360 1189 l 360 1046 m 819 1012 l 482 416 l 482 0 l 342 0 l 342 416 l 0 1012 l 140 1012 l 411 533 l 679 1012 l 819 1012 "},"0":{"x_min":73,"x_max":715,"ha":792,"o":"m 394 -29 q 153 129 242 -29 q 73 479 73 272 q 152 829 73 687 q 394 989 241 989 q 634 829 545 989 q 715 479 715 684 q 635 129 715 270 q 394 -29 546 -29 m 394 89 q 546 211 489 89 q 598 479 598 322 q 548 748 598 640 q 394 871 491 871 q 241 748 298 871 q 190 479 190 637 q 239 211 190 319 q 394 89 296 89 "},"”":{"x_min":0,"x_max":347,"ha":454,"o":"m 139 851 q 102 737 139 784 q 0 669 65 690 l 0 734 q 59 787 42 741 q 72 873 72 821 l 0 873 l 0 1013 l 139 1013 l 139 851 m 347 851 q 310 737 347 784 q 208 669 273 690 l 208 734 q 267 787 250 741 q 280 873 280 821 l 208 873 l 208 1013 l 347 1013 l 347 851 "},"@":{"x_min":0,"x_max":1260,"ha":1357,"o":"m 1098 -45 q 877 -160 1001 -117 q 633 -203 752 -203 q 155 -29 327 -203 q 0 360 0 127 q 176 802 0 616 q 687 1008 372 1008 q 1123 854 969 1008 q 1260 517 1260 718 q 1155 216 1260 341 q 868 82 1044 82 q 772 106 801 82 q 737 202 737 135 q 647 113 700 144 q 527 82 594 82 q 367 147 420 82 q 314 312 314 212 q 401 565 314 452 q 639 690 498 690 q 810 588 760 690 l 849 668 l 938 668 q 877 441 900 532 q 833 226 833 268 q 853 182 833 198 q 902 167 873 167 q 1088 272 1012 167 q 1159 512 1159 372 q 1051 793 1159 681 q 687 925 925 925 q 248 747 415 925 q 97 361 97 586 q 226 26 97 159 q 627 -122 370 -122 q 856 -87 737 -122 q 1061 8 976 -53 l 1098 -45 m 786 488 q 738 580 777 545 q 643 615 700 615 q 483 517 548 615 q 425 322 425 430 q 457 203 425 250 q 552 156 490 156 q 722 273 665 156 q 786 488 738 309 "},"Ί":{"x_min":0,"x_max":499,"ha":613,"o":"m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 m 499 0 l 360 0 l 360 1012 l 499 1012 l 499 0 "},"i":{"x_min":14,"x_max":136,"ha":275,"o":"m 136 873 l 14 873 l 14 1013 l 136 1013 l 136 873 m 136 0 l 14 0 l 14 737 l 136 737 l 136 0 "},"Β":{"x_min":0,"x_max":778,"ha":877,"o":"m 580 545 q 724 468 671 534 q 778 310 778 402 q 673 83 778 170 q 432 0 575 0 l 0 0 l 0 1013 l 411 1013 q 629 957 541 1013 q 732 768 732 891 q 691 632 732 692 q 580 545 650 571 m 393 899 l 139 899 l 139 587 l 379 587 q 521 623 462 587 q 592 744 592 666 q 531 859 592 819 q 393 899 471 899 m 419 124 q 566 169 504 124 q 635 302 635 219 q 559 435 635 388 q 402 476 494 476 l 139 476 l 139 124 l 419 124 "},"υ":{"x_min":0,"x_max":617,"ha":725,"o":"m 617 352 q 540 94 617 199 q 308 -24 455 -24 q 76 94 161 -24 q 0 352 0 199 l 0 739 l 126 739 l 126 355 q 169 185 126 257 q 312 98 220 98 q 451 185 402 98 q 492 355 492 257 l 492 739 l 617 739 l 617 352 "},"]":{"x_min":0,"x_max":275,"ha":372,"o":"m 275 -281 l 0 -281 l 0 -187 l 151 -187 l 151 920 l 0 920 l 0 1013 l 275 1013 l 275 -281 "},"m":{"x_min":0,"x_max":1019,"ha":1128,"o":"m 1019 0 l 897 0 l 897 454 q 860 591 897 536 q 739 660 816 660 q 613 586 659 660 q 573 436 573 522 l 573 0 l 447 0 l 447 455 q 412 591 447 535 q 294 657 372 657 q 165 586 213 657 q 122 437 122 521 l 122 0 l 0 0 l 0 738 l 117 738 l 117 640 q 202 730 150 697 q 316 763 254 763 q 437 730 381 763 q 525 642 494 697 q 621 731 559 700 q 753 763 682 763 q 943 694 867 763 q 1019 512 1019 625 l 1019 0 "},"χ":{"x_min":8.328125,"x_max":780.5625,"ha":815,"o":"m 780 -278 q 715 -294 747 -294 q 616 -257 663 -294 q 548 -175 576 -227 l 379 133 l 143 -277 l 9 -277 l 313 254 l 163 522 q 127 586 131 580 q 36 640 91 640 q 8 637 27 640 l 8 752 l 52 757 q 162 719 113 757 q 236 627 200 690 l 383 372 l 594 737 l 726 737 l 448 250 l 625 -69 q 670 -153 647 -110 q 743 -188 695 -188 q 780 -184 759 -188 l 780 -278 "},"8":{"x_min":55,"x_max":736,"ha":792,"o":"m 571 527 q 694 424 652 491 q 736 280 736 358 q 648 71 736 158 q 395 -26 551 -26 q 142 69 238 -26 q 55 279 55 157 q 96 425 55 359 q 220 527 138 491 q 120 615 153 562 q 88 726 88 668 q 171 904 88 827 q 395 986 261 986 q 618 905 529 986 q 702 727 702 830 q 670 616 702 667 q 571 527 638 565 m 394 565 q 519 610 475 565 q 563 717 563 655 q 521 823 563 781 q 392 872 474 872 q 265 824 312 872 q 224 720 224 783 q 265 613 224 656 q 394 565 312 565 m 395 91 q 545 150 488 91 q 597 280 597 204 q 546 408 597 355 q 395 465 492 465 q 244 408 299 465 q 194 280 194 356 q 244 150 194 203 q 395 91 299 91 "},"ί":{"x_min":42,"x_max":326.71875,"ha":361,"o":"m 284 3 q 233 -10 258 -5 q 182 -15 207 -15 q 85 26 119 -15 q 42 200 42 79 l 42 737 l 167 737 l 168 215 q 172 141 168 157 q 226 101 183 101 q 248 102 239 101 q 284 112 257 104 l 284 3 m 326 1040 l 137 819 l 54 819 l 189 1040 l 326 1040 "},"Ζ":{"x_min":0,"x_max":779.171875,"ha":850,"o":"m 779 0 l 0 0 l 0 113 l 620 896 l 40 896 l 40 1013 l 779 1013 l 779 887 l 170 124 l 779 124 l 779 0 "},"R":{"x_min":0,"x_max":781.953125,"ha":907,"o":"m 781 0 l 623 0 q 587 242 590 52 q 407 433 585 433 l 138 433 l 138 0 l 0 0 l 0 1013 l 396 1013 q 636 946 539 1013 q 749 731 749 868 q 711 597 749 659 q 608 502 674 534 q 718 370 696 474 q 729 207 722 352 q 781 26 736 62 l 781 0 m 373 551 q 533 594 465 551 q 614 731 614 645 q 532 859 614 815 q 373 896 465 896 l 138 896 l 138 551 l 373 551 "},"o":{"x_min":0,"x_max":713,"ha":821,"o":"m 357 -25 q 94 91 194 -25 q 0 368 0 202 q 93 642 0 533 q 357 761 193 761 q 618 644 518 761 q 713 368 713 533 q 619 91 713 201 q 357 -25 521 -25 m 357 85 q 528 175 465 85 q 584 369 584 255 q 529 562 584 484 q 357 651 467 651 q 189 560 250 651 q 135 369 135 481 q 187 177 135 257 q 357 85 250 85 "},"5":{"x_min":54.171875,"x_max":738,"ha":792,"o":"m 738 314 q 626 60 738 153 q 382 -23 526 -23 q 155 47 248 -23 q 54 256 54 125 l 183 256 q 259 132 204 174 q 382 91 314 91 q 533 149 471 91 q 602 314 602 213 q 538 469 602 411 q 386 528 475 528 q 284 506 332 528 q 197 439 237 484 l 81 439 l 159 958 l 684 958 l 684 840 l 254 840 l 214 579 q 306 627 258 612 q 407 643 354 643 q 636 552 540 643 q 738 314 738 457 "},"7":{"x_min":58.71875,"x_max":730.953125,"ha":792,"o":"m 730 839 q 469 448 560 641 q 335 0 378 255 l 192 0 q 328 441 235 252 q 593 830 421 630 l 58 830 l 58 958 l 730 958 l 730 839 "},"K":{"x_min":0,"x_max":819.46875,"ha":906,"o":"m 819 0 l 649 0 l 294 509 l 139 355 l 139 0 l 0 0 l 0 1013 l 139 1013 l 139 526 l 626 1013 l 809 1013 l 395 600 l 819 0 "},",":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 -12 q 105 -132 142 -82 q 0 -205 68 -182 l 0 -138 q 57 -82 40 -124 q 70 0 70 -51 l 0 0 l 0 151 l 142 151 l 142 -12 "},"d":{"x_min":0,"x_max":683,"ha":796,"o":"m 683 0 l 564 0 l 564 93 q 456 6 516 38 q 327 -25 395 -25 q 87 100 181 -25 q 0 365 0 215 q 90 639 0 525 q 343 763 187 763 q 564 647 486 763 l 564 1013 l 683 1013 l 683 0 m 582 373 q 529 562 582 484 q 361 653 468 653 q 190 561 253 653 q 135 365 135 479 q 189 175 135 254 q 358 85 251 85 q 529 178 468 85 q 582 373 582 258 "},"¨":{"x_min":-109,"x_max":247,"ha":232,"o":"m 247 1046 l 119 1046 l 119 1189 l 247 1189 l 247 1046 m 19 1046 l -109 1046 l -109 1189 l 19 1189 l 19 1046 "},"E":{"x_min":0,"x_max":736.109375,"ha":789,"o":"m 736 0 l 0 0 l 0 1013 l 725 1013 l 725 889 l 139 889 l 139 585 l 677 585 l 677 467 l 139 467 l 139 125 l 736 125 l 736 0 "},"Y":{"x_min":0,"x_max":820,"ha":886,"o":"m 820 1013 l 482 416 l 482 0 l 342 0 l 342 416 l 0 1013 l 140 1013 l 411 534 l 679 1012 l 820 1013 "},"\"":{"x_min":0,"x_max":299,"ha":396,"o":"m 299 606 l 203 606 l 203 988 l 299 988 l 299 606 m 96 606 l 0 606 l 0 988 l 96 988 l 96 606 "},"‹":{"x_min":17.984375,"x_max":773.609375,"ha":792,"o":"m 773 40 l 18 376 l 17 465 l 773 799 l 773 692 l 159 420 l 773 149 l 773 40 "},"„":{"x_min":0,"x_max":364,"ha":467,"o":"m 141 -12 q 104 -132 141 -82 q 0 -205 67 -182 l 0 -138 q 56 -82 40 -124 q 69 0 69 -51 l 0 0 l 0 151 l 141 151 l 141 -12 m 364 -12 q 327 -132 364 -82 q 222 -205 290 -182 l 222 -138 q 279 -82 262 -124 q 292 0 292 -51 l 222 0 l 222 151 l 364 151 l 364 -12 "},"δ":{"x_min":1,"x_max":710,"ha":810,"o":"m 710 360 q 616 87 710 196 q 356 -28 518 -28 q 99 82 197 -28 q 1 356 1 192 q 100 606 1 509 q 355 703 199 703 q 180 829 288 754 q 70 903 124 866 l 70 1012 l 643 1012 l 643 901 l 258 901 q 462 763 422 794 q 636 592 577 677 q 710 360 710 485 m 584 365 q 552 501 584 447 q 451 602 521 555 q 372 611 411 611 q 197 541 258 611 q 136 355 136 472 q 190 171 136 245 q 358 85 252 85 q 528 173 465 85 q 584 365 584 252 "},"έ":{"x_min":0,"x_max":634.71875,"ha":714,"o":"m 634 234 q 527 38 634 110 q 300 -25 433 -25 q 98 29 183 -25 q 0 204 0 93 q 37 313 0 265 q 128 390 67 352 q 56 459 82 419 q 26 555 26 505 q 114 712 26 654 q 295 763 191 763 q 499 700 416 763 q 589 515 589 631 l 478 515 q 419 618 464 580 q 307 657 374 657 q 207 630 253 657 q 151 547 151 598 q 238 445 151 469 q 389 434 280 434 l 389 331 l 349 331 q 206 315 255 331 q 125 210 125 287 q 183 107 125 145 q 302 76 233 76 q 436 117 379 76 q 509 234 493 159 l 634 234 m 520 1040 l 331 819 l 248 819 l 383 1040 l 520 1040 "},"ω":{"x_min":0,"x_max":922,"ha":1031,"o":"m 922 339 q 856 97 922 203 q 650 -26 780 -26 q 538 9 587 -26 q 461 103 489 44 q 387 12 436 46 q 277 -22 339 -22 q 69 97 147 -22 q 0 339 0 203 q 45 551 0 444 q 161 738 84 643 l 302 738 q 175 553 219 647 q 124 336 124 446 q 155 179 124 249 q 275 88 197 88 q 375 163 341 88 q 400 294 400 219 l 400 572 l 524 572 l 524 294 q 561 135 524 192 q 643 88 591 88 q 762 182 719 88 q 797 342 797 257 q 745 556 797 450 q 619 738 705 638 l 760 738 q 874 551 835 640 q 922 339 922 444 "},"´":{"x_min":0,"x_max":96,"ha":251,"o":"m 96 606 l 0 606 l 0 988 l 96 988 l 96 606 "},"±":{"x_min":11,"x_max":781,"ha":792,"o":"m 781 490 l 446 490 l 446 255 l 349 255 l 349 490 l 11 490 l 11 586 l 349 586 l 349 819 l 446 819 l 446 586 l 781 586 l 781 490 m 781 21 l 11 21 l 11 115 l 781 115 l 781 21 "},"|":{"x_min":343,"x_max":449,"ha":792,"o":"m 449 462 l 343 462 l 343 986 l 449 986 l 449 462 m 449 -242 l 343 -242 l 343 280 l 449 280 l 449 -242 "},"ϋ":{"x_min":0,"x_max":617,"ha":725,"o":"m 482 800 l 372 800 l 372 925 l 482 925 l 482 800 m 239 800 l 129 800 l 129 925 l 239 925 l 239 800 m 617 352 q 540 93 617 199 q 308 -24 455 -24 q 76 93 161 -24 q 0 352 0 199 l 0 738 l 126 738 l 126 354 q 169 185 126 257 q 312 98 220 98 q 451 185 402 98 q 492 354 492 257 l 492 738 l 617 738 l 617 352 "},"§":{"x_min":0,"x_max":593,"ha":690,"o":"m 593 425 q 554 312 593 369 q 467 233 516 254 q 537 83 537 172 q 459 -74 537 -12 q 288 -133 387 -133 q 115 -69 184 -133 q 47 96 47 -6 l 166 96 q 199 7 166 40 q 288 -26 232 -26 q 371 -5 332 -26 q 420 60 420 21 q 311 201 420 139 q 108 309 210 255 q 0 490 0 383 q 33 602 0 551 q 124 687 66 654 q 75 743 93 712 q 58 812 58 773 q 133 984 58 920 q 300 1043 201 1043 q 458 987 394 1043 q 529 814 529 925 l 411 814 q 370 908 404 877 q 289 939 336 939 q 213 911 246 939 q 180 841 180 883 q 286 720 180 779 q 484 612 480 615 q 593 425 593 534 m 467 409 q 355 544 467 473 q 196 630 228 612 q 146 587 162 609 q 124 525 124 558 q 239 387 124 462 q 398 298 369 315 q 448 345 429 316 q 467 409 467 375 "},"b":{"x_min":0,"x_max":685,"ha":783,"o":"m 685 372 q 597 99 685 213 q 347 -25 501 -25 q 219 5 277 -25 q 121 93 161 36 l 121 0 l 0 0 l 0 1013 l 121 1013 l 121 634 q 214 723 157 692 q 341 754 272 754 q 591 637 493 754 q 685 372 685 526 m 554 356 q 499 550 554 470 q 328 644 437 644 q 162 556 223 644 q 108 369 108 478 q 160 176 108 256 q 330 83 221 83 q 498 169 435 83 q 554 356 554 245 "},"q":{"x_min":0,"x_max":683,"ha":876,"o":"m 683 -278 l 564 -278 l 564 97 q 474 8 533 39 q 345 -23 415 -23 q 91 93 188 -23 q 0 364 0 203 q 87 635 0 522 q 337 760 184 760 q 466 727 408 760 q 564 637 523 695 l 564 737 l 683 737 l 683 -278 m 582 375 q 527 564 582 488 q 358 652 466 652 q 190 565 253 652 q 135 377 135 488 q 189 179 135 261 q 361 84 251 84 q 530 179 469 84 q 582 375 582 260 "},"Ω":{"x_min":-0.171875,"x_max":969.5625,"ha":1068,"o":"m 969 0 l 555 0 l 555 123 q 744 308 675 194 q 814 558 814 423 q 726 812 814 709 q 484 922 633 922 q 244 820 334 922 q 154 567 154 719 q 223 316 154 433 q 412 123 292 199 l 412 0 l 0 0 l 0 124 l 217 124 q 68 327 122 210 q 15 572 15 444 q 144 911 15 781 q 484 1041 274 1041 q 822 909 691 1041 q 953 569 953 777 q 899 326 953 443 q 750 124 846 210 l 969 124 l 969 0 "},"ύ":{"x_min":0,"x_max":617,"ha":725,"o":"m 617 352 q 540 93 617 199 q 308 -24 455 -24 q 76 93 161 -24 q 0 352 0 199 l 0 738 l 126 738 l 126 354 q 169 185 126 257 q 312 98 220 98 q 451 185 402 98 q 492 354 492 257 l 492 738 l 617 738 l 617 352 m 535 1040 l 346 819 l 262 819 l 397 1040 l 535 1040 "},"z":{"x_min":-0.015625,"x_max":613.890625,"ha":697,"o":"m 613 0 l 0 0 l 0 100 l 433 630 l 20 630 l 20 738 l 594 738 l 593 636 l 163 110 l 613 110 l 613 0 "},"™":{"x_min":0,"x_max":894,"ha":1000,"o":"m 389 951 l 229 951 l 229 503 l 160 503 l 160 951 l 0 951 l 0 1011 l 389 1011 l 389 951 m 894 503 l 827 503 l 827 939 l 685 503 l 620 503 l 481 937 l 481 503 l 417 503 l 417 1011 l 517 1011 l 653 580 l 796 1010 l 894 1011 l 894 503 "},"ή":{"x_min":0.78125,"x_max":697,"ha":810,"o":"m 697 -278 l 572 -278 l 572 454 q 540 587 572 536 q 425 650 501 650 q 271 579 337 650 q 206 420 206 509 l 206 0 l 81 0 l 81 489 q 73 588 81 562 q 0 644 56 644 l 0 741 q 68 755 38 755 q 158 721 124 755 q 200 630 193 687 q 297 726 234 692 q 434 761 359 761 q 620 692 544 761 q 697 516 697 624 l 697 -278 m 479 1040 l 290 819 l 207 819 l 341 1040 l 479 1040 "},"Θ":{"x_min":0,"x_max":960,"ha":1056,"o":"m 960 507 q 833 129 960 280 q 476 -32 698 -32 q 123 129 255 -32 q 0 507 0 280 q 123 883 0 732 q 476 1045 255 1045 q 832 883 696 1045 q 960 507 960 732 m 817 500 q 733 789 817 669 q 476 924 639 924 q 223 792 317 924 q 142 507 142 675 q 222 222 142 339 q 476 89 315 89 q 730 218 636 89 q 817 500 817 334 m 716 449 l 243 449 l 243 571 l 716 571 l 716 449 "},"®":{"x_min":-3,"x_max":1008,"ha":1106,"o":"m 503 532 q 614 562 566 532 q 672 658 672 598 q 614 747 672 716 q 503 772 569 772 l 338 772 l 338 532 l 503 532 m 502 -7 q 123 151 263 -7 q -3 501 -3 294 q 123 851 -3 706 q 502 1011 263 1011 q 881 851 739 1011 q 1008 501 1008 708 q 883 151 1008 292 q 502 -7 744 -7 m 502 60 q 830 197 709 60 q 940 501 940 322 q 831 805 940 681 q 502 944 709 944 q 174 805 296 944 q 65 501 65 680 q 173 197 65 320 q 502 60 294 60 m 788 146 l 678 146 q 653 316 655 183 q 527 449 652 449 l 338 449 l 338 146 l 241 146 l 241 854 l 518 854 q 688 808 621 854 q 766 658 766 755 q 739 563 766 607 q 668 497 713 519 q 751 331 747 472 q 788 164 756 190 l 788 146 "},"~":{"x_min":0,"x_max":833,"ha":931,"o":"m 833 958 q 778 753 833 831 q 594 665 716 665 q 402 761 502 665 q 240 857 302 857 q 131 795 166 857 q 104 665 104 745 l 0 665 q 54 867 0 789 q 237 958 116 958 q 429 861 331 958 q 594 765 527 765 q 704 827 670 765 q 729 958 729 874 l 833 958 "},"Ε":{"x_min":0,"x_max":736.21875,"ha":778,"o":"m 736 0 l 0 0 l 0 1013 l 725 1013 l 725 889 l 139 889 l 139 585 l 677 585 l 677 467 l 139 467 l 139 125 l 736 125 l 736 0 "},"³":{"x_min":0,"x_max":450,"ha":547,"o":"m 450 552 q 379 413 450 464 q 220 366 313 366 q 69 414 130 366 q 0 567 0 470 l 85 567 q 126 470 85 504 q 225 437 168 437 q 320 467 280 437 q 360 552 360 498 q 318 632 360 608 q 213 657 276 657 q 195 657 203 657 q 176 657 181 657 l 176 722 q 279 733 249 722 q 334 815 334 752 q 300 881 334 856 q 220 907 267 907 q 133 875 169 907 q 97 781 97 844 l 15 781 q 78 926 15 875 q 220 972 135 972 q 364 930 303 972 q 426 817 426 888 q 344 697 426 733 q 421 642 392 681 q 450 552 450 603 "},"[":{"x_min":0,"x_max":273.609375,"ha":371,"o":"m 273 -281 l 0 -281 l 0 1013 l 273 1013 l 273 920 l 124 920 l 124 -187 l 273 -187 l 273 -281 "},"L":{"x_min":0,"x_max":645.828125,"ha":696,"o":"m 645 0 l 0 0 l 0 1013 l 140 1013 l 140 126 l 645 126 l 645 0 "},"σ":{"x_min":0,"x_max":803.390625,"ha":894,"o":"m 803 628 l 633 628 q 713 368 713 512 q 618 93 713 204 q 357 -25 518 -25 q 94 91 194 -25 q 0 368 0 201 q 94 644 0 533 q 356 761 194 761 q 481 750 398 761 q 608 739 564 739 l 803 739 l 803 628 m 360 85 q 529 180 467 85 q 584 374 584 262 q 527 566 584 490 q 352 651 463 651 q 187 559 247 651 q 135 368 135 478 q 189 175 135 254 q 360 85 251 85 "},"ζ":{"x_min":0,"x_max":573,"ha":642,"o":"m 573 -40 q 553 -162 573 -97 q 510 -278 543 -193 l 400 -278 q 441 -187 428 -219 q 462 -90 462 -132 q 378 -14 462 -14 q 108 45 197 -14 q 0 290 0 117 q 108 631 0 462 q 353 901 194 767 l 55 901 l 55 1012 l 561 1012 l 561 924 q 261 669 382 831 q 128 301 128 489 q 243 117 128 149 q 458 98 350 108 q 573 -40 573 80 "},"θ":{"x_min":0,"x_max":674,"ha":778,"o":"m 674 496 q 601 160 674 304 q 336 -26 508 -26 q 73 153 165 -26 q 0 485 0 296 q 72 840 0 683 q 343 1045 166 1045 q 605 844 516 1045 q 674 496 674 692 m 546 579 q 498 798 546 691 q 336 935 437 935 q 178 798 237 935 q 126 579 137 701 l 546 579 m 546 475 l 126 475 q 170 233 126 348 q 338 80 230 80 q 504 233 447 80 q 546 475 546 346 "},"Ο":{"x_min":0,"x_max":958,"ha":1054,"o":"m 485 1042 q 834 883 703 1042 q 958 511 958 735 q 834 136 958 287 q 481 -26 701 -26 q 126 130 261 -26 q 0 504 0 279 q 127 880 0 729 q 485 1042 263 1042 m 480 98 q 731 225 638 98 q 815 504 815 340 q 733 783 815 670 q 480 913 640 913 q 226 785 321 913 q 142 504 142 671 q 226 224 142 339 q 480 98 319 98 "},"Γ":{"x_min":0,"x_max":705.28125,"ha":749,"o":"m 705 886 l 140 886 l 140 0 l 0 0 l 0 1012 l 705 1012 l 705 886 "}," ":{"x_min":0,"x_max":0,"ha":375},"%":{"x_min":-3,"x_max":1089,"ha":1186,"o":"m 845 0 q 663 76 731 0 q 602 244 602 145 q 661 412 602 344 q 845 489 728 489 q 1027 412 959 489 q 1089 244 1089 343 q 1029 76 1089 144 q 845 0 962 0 m 844 103 q 945 143 909 103 q 981 243 981 184 q 947 340 981 301 q 844 385 909 385 q 744 342 781 385 q 708 243 708 300 q 741 147 708 186 q 844 103 780 103 m 888 986 l 284 -25 l 199 -25 l 803 986 l 888 986 m 241 468 q 58 545 126 468 q -3 715 -3 615 q 56 881 -3 813 q 238 958 124 958 q 421 881 353 958 q 483 712 483 813 q 423 544 483 612 q 241 468 356 468 m 241 855 q 137 811 175 855 q 100 710 100 768 q 136 612 100 653 q 240 572 172 572 q 344 614 306 572 q 382 713 382 656 q 347 810 382 771 q 241 855 308 855 "},"P":{"x_min":0,"x_max":726,"ha":806,"o":"m 424 1013 q 640 931 555 1013 q 726 719 726 850 q 637 506 726 587 q 413 426 548 426 l 140 426 l 140 0 l 0 0 l 0 1013 l 424 1013 m 379 889 l 140 889 l 140 548 l 372 548 q 522 589 459 548 q 593 720 593 637 q 528 845 593 801 q 379 889 463 889 "},"Έ":{"x_min":0,"x_max":1078.21875,"ha":1118,"o":"m 1078 0 l 342 0 l 342 1013 l 1067 1013 l 1067 889 l 481 889 l 481 585 l 1019 585 l 1019 467 l 481 467 l 481 125 l 1078 125 l 1078 0 m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 "},"Ώ":{"x_min":0.125,"x_max":1136.546875,"ha":1235,"o":"m 1136 0 l 722 0 l 722 123 q 911 309 842 194 q 981 558 981 423 q 893 813 981 710 q 651 923 800 923 q 411 821 501 923 q 321 568 321 720 q 390 316 321 433 q 579 123 459 200 l 579 0 l 166 0 l 166 124 l 384 124 q 235 327 289 210 q 182 572 182 444 q 311 912 182 782 q 651 1042 441 1042 q 989 910 858 1042 q 1120 569 1120 778 q 1066 326 1120 443 q 917 124 1013 210 l 1136 124 l 1136 0 m 277 1040 l 83 800 l 0 800 l 140 1041 l 277 1040 "},"_":{"x_min":0,"x_max":705.5625,"ha":803,"o":"m 705 -334 l 0 -334 l 0 -234 l 705 -234 l 705 -334 "},"Ϊ":{"x_min":-110,"x_max":246,"ha":275,"o":"m 246 1046 l 118 1046 l 118 1189 l 246 1189 l 246 1046 m 18 1046 l -110 1046 l -110 1189 l 18 1189 l 18 1046 m 136 0 l 0 0 l 0 1012 l 136 1012 l 136 0 "},"+":{"x_min":23,"x_max":768,"ha":792,"o":"m 768 372 l 444 372 l 444 0 l 347 0 l 347 372 l 23 372 l 23 468 l 347 468 l 347 840 l 444 840 l 444 468 l 768 468 l 768 372 "},"½":{"x_min":0,"x_max":1050,"ha":1149,"o":"m 1050 0 l 625 0 q 712 178 625 108 q 878 277 722 187 q 967 385 967 328 q 932 456 967 429 q 850 484 897 484 q 759 450 798 484 q 721 352 721 416 l 640 352 q 706 502 640 448 q 851 551 766 551 q 987 509 931 551 q 1050 385 1050 462 q 976 251 1050 301 q 829 179 902 215 q 717 68 740 133 l 1050 68 l 1050 0 m 834 985 l 215 -28 l 130 -28 l 750 984 l 834 985 m 224 422 l 142 422 l 142 811 l 0 811 l 0 867 q 104 889 62 867 q 164 973 157 916 l 224 973 l 224 422 "},"Ρ":{"x_min":0,"x_max":720,"ha":783,"o":"m 424 1013 q 637 933 554 1013 q 720 723 720 853 q 633 508 720 591 q 413 426 546 426 l 140 426 l 140 0 l 0 0 l 0 1013 l 424 1013 m 378 889 l 140 889 l 140 548 l 371 548 q 521 589 458 548 q 592 720 592 637 q 527 845 592 801 q 378 889 463 889 "},"'":{"x_min":0,"x_max":139,"ha":236,"o":"m 139 851 q 102 737 139 784 q 0 669 65 690 l 0 734 q 59 787 42 741 q 72 873 72 821 l 0 873 l 0 1013 l 139 1013 l 139 851 "},"ª":{"x_min":0,"x_max":350,"ha":397,"o":"m 350 625 q 307 616 328 616 q 266 631 281 616 q 247 673 251 645 q 190 628 225 644 q 116 613 156 613 q 32 641 64 613 q 0 722 0 669 q 72 826 0 800 q 247 866 159 846 l 247 887 q 220 934 247 916 q 162 953 194 953 q 104 934 129 953 q 76 882 80 915 l 16 882 q 60 976 16 941 q 166 1011 104 1011 q 266 979 224 1011 q 308 891 308 948 l 308 706 q 311 679 308 688 q 331 670 315 670 l 350 672 l 350 625 m 247 757 l 247 811 q 136 790 175 798 q 64 726 64 773 q 83 682 64 697 q 132 667 103 667 q 207 690 174 667 q 247 757 247 718 "},"΅":{"x_min":0,"x_max":450,"ha":553,"o":"m 450 800 l 340 800 l 340 925 l 450 925 l 450 800 m 406 1040 l 212 800 l 129 800 l 269 1040 l 406 1040 m 110 800 l 0 800 l 0 925 l 110 925 l 110 800 "},"T":{"x_min":0,"x_max":777,"ha":835,"o":"m 777 894 l 458 894 l 458 0 l 319 0 l 319 894 l 0 894 l 0 1013 l 777 1013 l 777 894 "},"Φ":{"x_min":0,"x_max":915,"ha":997,"o":"m 527 0 l 389 0 l 389 122 q 110 231 220 122 q 0 509 0 340 q 110 785 0 677 q 389 893 220 893 l 389 1013 l 527 1013 l 527 893 q 804 786 693 893 q 915 509 915 679 q 805 231 915 341 q 527 122 696 122 l 527 0 m 527 226 q 712 310 641 226 q 779 507 779 389 q 712 705 779 627 q 527 787 641 787 l 527 226 m 389 226 l 389 787 q 205 698 275 775 q 136 505 136 620 q 206 308 136 391 q 389 226 276 226 "},"⁋":{"x_min":0,"x_max":0,"ha":694},"j":{"x_min":-77.78125,"x_max":167,"ha":349,"o":"m 167 871 l 42 871 l 42 1013 l 167 1013 l 167 871 m 167 -80 q 121 -231 167 -184 q -26 -278 76 -278 l -77 -278 l -77 -164 l -41 -164 q 26 -143 11 -164 q 42 -65 42 -122 l 42 737 l 167 737 l 167 -80 "},"Σ":{"x_min":0,"x_max":756.953125,"ha":819,"o":"m 756 0 l 0 0 l 0 107 l 395 523 l 22 904 l 22 1013 l 745 1013 l 745 889 l 209 889 l 566 523 l 187 125 l 756 125 l 756 0 "},"1":{"x_min":215.671875,"x_max":574,"ha":792,"o":"m 574 0 l 442 0 l 442 697 l 215 697 l 215 796 q 386 833 330 796 q 475 986 447 875 l 574 986 l 574 0 "},"›":{"x_min":18.0625,"x_max":774,"ha":792,"o":"m 774 376 l 18 40 l 18 149 l 631 421 l 18 692 l 18 799 l 774 465 l 774 376 "},"<":{"x_min":17.984375,"x_max":773.609375,"ha":792,"o":"m 773 40 l 18 376 l 17 465 l 773 799 l 773 692 l 159 420 l 773 149 l 773 40 "},"£":{"x_min":0,"x_max":704.484375,"ha":801,"o":"m 704 41 q 623 -10 664 5 q 543 -26 583 -26 q 359 15 501 -26 q 243 36 288 36 q 158 23 197 36 q 73 -21 119 10 l 6 76 q 125 195 90 150 q 175 331 175 262 q 147 443 175 383 l 0 443 l 0 512 l 108 512 q 43 734 43 623 q 120 929 43 854 q 358 1010 204 1010 q 579 936 487 1010 q 678 729 678 857 l 678 684 l 552 684 q 504 838 552 780 q 362 896 457 896 q 216 852 263 896 q 176 747 176 815 q 199 627 176 697 q 248 512 217 574 l 468 512 l 468 443 l 279 443 q 297 356 297 398 q 230 194 297 279 q 153 107 211 170 q 227 133 190 125 q 293 142 264 142 q 410 119 339 142 q 516 96 482 96 q 579 105 550 96 q 648 142 608 115 l 704 41 "},"t":{"x_min":0,"x_max":367,"ha":458,"o":"m 367 0 q 312 -5 339 -2 q 262 -8 284 -8 q 145 28 183 -8 q 108 143 108 64 l 108 638 l 0 638 l 0 738 l 108 738 l 108 944 l 232 944 l 232 738 l 367 738 l 367 638 l 232 638 l 232 185 q 248 121 232 140 q 307 102 264 102 q 345 104 330 102 q 367 107 360 107 l 367 0 "},"¬":{"x_min":0,"x_max":706,"ha":803,"o":"m 706 411 l 706 158 l 630 158 l 630 335 l 0 335 l 0 411 l 706 411 "},"λ":{"x_min":0,"x_max":750,"ha":803,"o":"m 750 -7 q 679 -15 716 -15 q 538 59 591 -15 q 466 214 512 97 l 336 551 l 126 0 l 0 0 l 270 705 q 223 837 247 770 q 116 899 190 899 q 90 898 100 899 l 90 1004 q 152 1011 125 1011 q 298 938 244 1011 q 373 783 326 901 l 605 192 q 649 115 629 136 q 716 95 669 95 l 736 95 q 750 97 745 97 l 750 -7 "},"W":{"x_min":0,"x_max":1263.890625,"ha":1351,"o":"m 1263 1013 l 995 0 l 859 0 l 627 837 l 405 0 l 265 0 l 0 1013 l 136 1013 l 342 202 l 556 1013 l 701 1013 l 921 207 l 1133 1012 l 1263 1013 "},">":{"x_min":18.0625,"x_max":774,"ha":792,"o":"m 774 376 l 18 40 l 18 149 l 631 421 l 18 692 l 18 799 l 774 465 l 774 376 "},"v":{"x_min":0,"x_max":675.15625,"ha":761,"o":"m 675 738 l 404 0 l 272 0 l 0 738 l 133 737 l 340 147 l 541 737 l 675 738 "},"τ":{"x_min":0.28125,"x_max":644.5,"ha":703,"o":"m 644 628 l 382 628 l 382 179 q 388 120 382 137 q 436 91 401 91 q 474 94 447 91 q 504 97 501 97 l 504 0 q 454 -9 482 -5 q 401 -14 426 -14 q 278 67 308 -14 q 260 233 260 118 l 260 628 l 0 628 l 0 739 l 644 739 l 644 628 "},"ξ":{"x_min":0,"x_max":624.9375,"ha":699,"o":"m 624 -37 q 608 -153 624 -96 q 563 -278 593 -211 l 454 -278 q 491 -183 486 -200 q 511 -83 511 -126 q 484 -23 511 -44 q 370 1 452 1 q 323 0 354 1 q 283 -1 293 -1 q 84 76 169 -1 q 0 266 0 154 q 56 431 0 358 q 197 538 108 498 q 94 613 134 562 q 54 730 54 665 q 77 823 54 780 q 143 901 101 867 l 27 901 l 27 1012 l 576 1012 l 576 901 l 380 901 q 244 863 303 901 q 178 745 178 820 q 312 600 178 636 q 532 582 380 582 l 532 479 q 276 455 361 479 q 118 281 118 410 q 165 173 118 217 q 274 120 208 133 q 494 101 384 110 q 624 -37 624 76 "},"&":{"x_min":-3,"x_max":894.25,"ha":992,"o":"m 894 0 l 725 0 l 624 123 q 471 0 553 40 q 306 -41 390 -41 q 168 -7 231 -41 q 62 92 105 26 q 14 187 31 139 q -3 276 -3 235 q 55 433 -3 358 q 248 581 114 508 q 170 689 196 640 q 137 817 137 751 q 214 985 137 922 q 384 1041 284 1041 q 548 988 483 1041 q 622 824 622 928 q 563 666 622 739 q 431 556 516 608 l 621 326 q 649 407 639 361 q 663 493 653 426 l 781 493 q 703 229 781 352 l 894 0 m 504 818 q 468 908 504 877 q 384 940 433 940 q 293 907 331 940 q 255 818 255 875 q 289 714 255 767 q 363 628 313 678 q 477 729 446 682 q 504 818 504 771 m 556 209 l 314 499 q 179 395 223 449 q 135 283 135 341 q 146 222 135 253 q 183 158 158 192 q 333 80 241 80 q 556 209 448 80 "},"Λ":{"x_min":0,"x_max":862.5,"ha":942,"o":"m 862 0 l 719 0 l 426 847 l 143 0 l 0 0 l 356 1013 l 501 1013 l 862 0 "},"I":{"x_min":41,"x_max":180,"ha":293,"o":"m 180 0 l 41 0 l 41 1013 l 180 1013 l 180 0 "},"G":{"x_min":0,"x_max":921,"ha":1011,"o":"m 921 0 l 832 0 l 801 136 q 655 15 741 58 q 470 -28 568 -28 q 126 133 259 -28 q 0 499 0 284 q 125 881 0 731 q 486 1043 259 1043 q 763 957 647 1043 q 905 709 890 864 l 772 709 q 668 866 747 807 q 486 926 589 926 q 228 795 322 926 q 142 507 142 677 q 228 224 142 342 q 483 94 323 94 q 712 195 625 94 q 796 435 796 291 l 477 435 l 477 549 l 921 549 l 921 0 "},"ΰ":{"x_min":0,"x_max":617,"ha":725,"o":"m 524 800 l 414 800 l 414 925 l 524 925 l 524 800 m 183 800 l 73 800 l 73 925 l 183 925 l 183 800 m 617 352 q 540 93 617 199 q 308 -24 455 -24 q 76 93 161 -24 q 0 352 0 199 l 0 738 l 126 738 l 126 354 q 169 185 126 257 q 312 98 220 98 q 451 185 402 98 q 492 354 492 257 l 492 738 l 617 738 l 617 352 m 489 1040 l 300 819 l 216 819 l 351 1040 l 489 1040 "},"`":{"x_min":0,"x_max":138.890625,"ha":236,"o":"m 138 699 l 0 699 l 0 861 q 36 974 0 929 q 138 1041 72 1020 l 138 977 q 82 931 95 969 q 69 839 69 893 l 138 839 l 138 699 "},"·":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 585 l 0 585 l 0 738 l 142 738 l 142 585 "},"Υ":{"x_min":0.328125,"x_max":819.515625,"ha":889,"o":"m 819 1013 l 482 416 l 482 0 l 342 0 l 342 416 l 0 1013 l 140 1013 l 411 533 l 679 1013 l 819 1013 "},"r":{"x_min":0,"x_max":355.5625,"ha":432,"o":"m 355 621 l 343 621 q 179 569 236 621 q 122 411 122 518 l 122 0 l 0 0 l 0 737 l 117 737 l 117 604 q 204 719 146 686 q 355 753 262 753 l 355 621 "},"x":{"x_min":0,"x_max":675,"ha":764,"o":"m 675 0 l 525 0 l 331 286 l 144 0 l 0 0 l 256 379 l 12 738 l 157 737 l 336 473 l 516 738 l 661 738 l 412 380 l 675 0 "},"μ":{"x_min":0,"x_max":696.609375,"ha":747,"o":"m 696 -4 q 628 -14 657 -14 q 498 97 513 -14 q 422 8 470 41 q 313 -24 374 -24 q 207 3 258 -24 q 120 80 157 31 l 120 -278 l 0 -278 l 0 738 l 124 738 l 124 343 q 165 172 124 246 q 308 82 216 82 q 451 177 402 82 q 492 358 492 254 l 492 738 l 616 738 l 616 214 q 623 136 616 160 q 673 92 636 92 q 696 95 684 92 l 696 -4 "},"h":{"x_min":0,"x_max":615,"ha":724,"o":"m 615 472 l 615 0 l 490 0 l 490 454 q 456 590 490 535 q 338 654 416 654 q 186 588 251 654 q 122 436 122 522 l 122 0 l 0 0 l 0 1013 l 122 1013 l 122 633 q 218 727 149 694 q 362 760 287 760 q 552 676 484 760 q 615 472 615 600 "},".":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 0 l 0 0 l 0 151 l 142 151 l 142 0 "},"φ":{"x_min":-2,"x_max":878,"ha":974,"o":"m 496 -279 l 378 -279 l 378 -17 q 101 88 204 -17 q -2 367 -2 194 q 68 626 -2 510 q 283 758 151 758 l 283 646 q 167 537 209 626 q 133 373 133 462 q 192 177 133 254 q 378 93 259 93 l 378 758 q 445 764 426 763 q 476 765 464 765 q 765 659 653 765 q 878 377 878 553 q 771 96 878 209 q 496 -17 665 -17 l 496 -279 m 496 93 l 514 93 q 687 183 623 93 q 746 380 746 265 q 691 569 746 491 q 522 658 629 658 l 496 656 l 496 93 "},";":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 585 l 0 585 l 0 738 l 142 738 l 142 585 m 142 -12 q 105 -132 142 -82 q 0 -206 68 -182 l 0 -138 q 58 -82 43 -123 q 68 0 68 -56 l 0 0 l 0 151 l 142 151 l 142 -12 "},"f":{"x_min":0,"x_max":378,"ha":472,"o":"m 378 638 l 246 638 l 246 0 l 121 0 l 121 638 l 0 638 l 0 738 l 121 738 q 137 935 121 887 q 290 1028 171 1028 q 320 1027 305 1028 q 378 1021 334 1026 l 378 908 q 323 918 346 918 q 257 870 273 918 q 246 780 246 840 l 246 738 l 378 738 l 378 638 "},"“":{"x_min":1,"x_max":348.21875,"ha":454,"o":"m 140 670 l 1 670 l 1 830 q 37 943 1 897 q 140 1011 74 990 l 140 947 q 82 900 97 940 q 68 810 68 861 l 140 810 l 140 670 m 348 670 l 209 670 l 209 830 q 245 943 209 897 q 348 1011 282 990 l 348 947 q 290 900 305 940 q 276 810 276 861 l 348 810 l 348 670 "},"A":{"x_min":0.03125,"x_max":906.953125,"ha":1008,"o":"m 906 0 l 756 0 l 648 303 l 251 303 l 142 0 l 0 0 l 376 1013 l 529 1013 l 906 0 m 610 421 l 452 867 l 293 421 l 610 421 "},"6":{"x_min":53,"x_max":739,"ha":792,"o":"m 739 312 q 633 62 739 162 q 400 -31 534 -31 q 162 78 257 -31 q 53 439 53 206 q 178 859 53 712 q 441 986 284 986 q 643 912 559 986 q 732 713 732 833 l 601 713 q 544 830 594 786 q 426 875 494 875 q 268 793 331 875 q 193 517 193 697 q 301 597 240 570 q 427 624 362 624 q 643 540 552 624 q 739 312 739 451 m 603 298 q 540 461 603 400 q 404 516 484 516 q 268 461 323 516 q 207 300 207 401 q 269 137 207 198 q 405 83 325 83 q 541 137 486 83 q 603 298 603 197 "},"‘":{"x_min":1,"x_max":139.890625,"ha":236,"o":"m 139 670 l 1 670 l 1 830 q 37 943 1 897 q 139 1011 74 990 l 139 947 q 82 900 97 940 q 68 810 68 861 l 139 810 l 139 670 "},"ϊ":{"x_min":-70,"x_max":283,"ha":361,"o":"m 283 800 l 173 800 l 173 925 l 283 925 l 283 800 m 40 800 l -70 800 l -70 925 l 40 925 l 40 800 m 283 3 q 232 -10 257 -5 q 181 -15 206 -15 q 84 26 118 -15 q 41 200 41 79 l 41 737 l 166 737 l 167 215 q 171 141 167 157 q 225 101 182 101 q 247 103 238 101 q 283 112 256 104 l 283 3 "},"π":{"x_min":-0.21875,"x_max":773.21875,"ha":857,"o":"m 773 -7 l 707 -11 q 575 40 607 -11 q 552 174 552 77 l 552 226 l 552 626 l 222 626 l 222 0 l 97 0 l 97 626 l 0 626 l 0 737 l 773 737 l 773 626 l 676 626 l 676 171 q 695 103 676 117 q 773 90 714 90 l 773 -7 "},"ά":{"x_min":0,"x_max":765.5625,"ha":809,"o":"m 765 -4 q 698 -14 726 -14 q 564 97 586 -14 q 466 7 525 40 q 337 -26 407 -26 q 88 98 186 -26 q 0 369 0 212 q 88 637 0 525 q 337 760 184 760 q 465 727 407 760 q 563 637 524 695 l 563 738 l 685 738 l 685 222 q 693 141 685 168 q 748 94 708 94 q 765 95 760 94 l 765 -4 m 584 371 q 531 562 584 485 q 360 653 470 653 q 192 566 254 653 q 135 379 135 489 q 186 181 135 261 q 358 84 247 84 q 528 176 465 84 q 584 371 584 260 m 604 1040 l 415 819 l 332 819 l 466 1040 l 604 1040 "},"O":{"x_min":0,"x_max":958,"ha":1057,"o":"m 485 1041 q 834 882 702 1041 q 958 512 958 734 q 834 136 958 287 q 481 -26 702 -26 q 126 130 261 -26 q 0 504 0 279 q 127 880 0 728 q 485 1041 263 1041 m 480 98 q 731 225 638 98 q 815 504 815 340 q 733 783 815 669 q 480 912 640 912 q 226 784 321 912 q 142 504 142 670 q 226 224 142 339 q 480 98 319 98 "},"n":{"x_min":0,"x_max":615,"ha":724,"o":"m 615 463 l 615 0 l 490 0 l 490 454 q 453 592 490 537 q 331 656 410 656 q 178 585 240 656 q 117 421 117 514 l 117 0 l 0 0 l 0 738 l 117 738 l 117 630 q 218 728 150 693 q 359 764 286 764 q 552 675 484 764 q 615 463 615 593 "},"3":{"x_min":54,"x_max":737,"ha":792,"o":"m 737 284 q 635 55 737 141 q 399 -25 541 -25 q 156 52 248 -25 q 54 308 54 140 l 185 308 q 245 147 185 202 q 395 96 302 96 q 539 140 484 96 q 602 280 602 190 q 510 429 602 390 q 324 454 451 454 l 324 565 q 487 584 441 565 q 565 719 565 617 q 515 835 565 791 q 395 879 466 879 q 255 824 307 879 q 203 661 203 769 l 78 661 q 166 909 78 822 q 387 992 250 992 q 603 921 513 992 q 701 723 701 844 q 669 607 701 656 q 578 524 637 558 q 696 434 655 499 q 737 284 737 369 "},"9":{"x_min":53,"x_max":739,"ha":792,"o":"m 739 524 q 619 94 739 241 q 362 -32 516 -32 q 150 47 242 -32 q 59 244 59 126 l 191 244 q 246 129 191 176 q 373 82 301 82 q 526 161 466 82 q 597 440 597 255 q 363 334 501 334 q 130 432 216 334 q 53 650 53 521 q 134 880 53 786 q 383 986 226 986 q 659 841 566 986 q 739 524 739 719 m 388 449 q 535 514 480 449 q 585 658 585 573 q 535 805 585 744 q 388 873 480 873 q 242 809 294 873 q 191 658 191 745 q 239 514 191 572 q 388 449 292 449 "},"l":{"x_min":41,"x_max":166,"ha":279,"o":"m 166 0 l 41 0 l 41 1013 l 166 1013 l 166 0 "},"¤":{"x_min":40.09375,"x_max":728.796875,"ha":825,"o":"m 728 304 l 649 224 l 512 363 q 383 331 458 331 q 256 363 310 331 l 119 224 l 40 304 l 177 441 q 150 553 150 493 q 184 673 150 621 l 40 818 l 119 898 l 267 749 q 321 766 291 759 q 384 773 351 773 q 447 766 417 773 q 501 749 477 759 l 649 898 l 728 818 l 585 675 q 612 618 604 648 q 621 553 621 587 q 591 441 621 491 l 728 304 m 384 682 q 280 643 318 682 q 243 551 243 604 q 279 461 243 499 q 383 423 316 423 q 487 461 449 423 q 525 553 525 500 q 490 641 525 605 q 384 682 451 682 "},"κ":{"x_min":0,"x_max":632.328125,"ha":679,"o":"m 632 0 l 482 0 l 225 384 l 124 288 l 124 0 l 0 0 l 0 738 l 124 738 l 124 446 l 433 738 l 596 738 l 312 466 l 632 0 "},"4":{"x_min":48,"x_max":742.453125,"ha":792,"o":"m 742 243 l 602 243 l 602 0 l 476 0 l 476 243 l 48 243 l 48 368 l 476 958 l 602 958 l 602 354 l 742 354 l 742 243 m 476 354 l 476 792 l 162 354 l 476 354 "},"p":{"x_min":0,"x_max":685,"ha":786,"o":"m 685 364 q 598 96 685 205 q 350 -23 504 -23 q 121 89 205 -23 l 121 -278 l 0 -278 l 0 738 l 121 738 l 121 633 q 220 726 159 691 q 351 761 280 761 q 598 636 504 761 q 685 364 685 522 m 557 371 q 501 560 557 481 q 330 651 437 651 q 162 559 223 651 q 108 366 108 479 q 162 177 108 254 q 333 87 224 87 q 502 178 441 87 q 557 371 557 258 "},"‡":{"x_min":0,"x_max":777,"ha":835,"o":"m 458 238 l 458 0 l 319 0 l 319 238 l 0 238 l 0 360 l 319 360 l 319 681 l 0 683 l 0 804 l 319 804 l 319 1015 l 458 1013 l 458 804 l 777 804 l 777 683 l 458 683 l 458 360 l 777 360 l 777 238 l 458 238 "},"ψ":{"x_min":0,"x_max":808,"ha":907,"o":"m 465 -278 l 341 -278 l 341 -15 q 87 102 180 -15 q 0 378 0 210 l 0 739 l 133 739 l 133 379 q 182 195 133 275 q 341 98 242 98 l 341 922 l 465 922 l 465 98 q 623 195 563 98 q 675 382 675 278 l 675 742 l 808 742 l 808 381 q 720 104 808 213 q 466 -13 627 -13 l 465 -278 "},"η":{"x_min":0.78125,"x_max":697,"ha":810,"o":"m 697 -278 l 572 -278 l 572 454 q 540 587 572 536 q 425 650 501 650 q 271 579 337 650 q 206 420 206 509 l 206 0 l 81 0 l 81 489 q 73 588 81 562 q 0 644 56 644 l 0 741 q 68 755 38 755 q 158 720 124 755 q 200 630 193 686 q 297 726 234 692 q 434 761 359 761 q 620 692 544 761 q 697 516 697 624 l 697 -278 "}},"cssFontWeight":"normal","ascender":1189,"underlinePosition":-100,"cssFontStyle":"normal","boundingBox":{"yMin":-334,"xMin":-111,"yMax":1189,"xMax":1672},"resolution":1000,"original_font_information":{"postscript_name":"Helvetiker-Regular","version_string":"Version 1.00 2004 initial release","vendor_url":"http://www.magenta.gr/","full_font_name":"Helvetiker","font_family_name":"Helvetiker","copyright":"Copyright (c) Μagenta ltd, 2004","description":"","trademark":"","designer":"","designer_url":"","unique_font_identifier":"Μagenta ltd:Helvetiker:22-10-104","license_url":"http://www.ellak.gr/fonts/MgOpen/license.html","license_description":"Copyright (c) 2004 by MAGENTA Ltd. All Rights Reserved.\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license (\"Fonts\") and associated documentation files (the \"Font Software\"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions: \r\n\r\nThe above copyright and this permission notice shall be included in all copies of one or more of the Font Software typefaces.\r\n\r\nThe Font Software may be modified, altered, or added to, and in particular the designs of glyphs or characters in the Fonts may be modified and additional glyphs or characters may be added to the Fonts, only if the fonts are renamed to names not containing the word \"MgOpen\", or if the modifications are accepted for inclusion in the Font Software itself by the each appointed Administrator.\r\n\r\nThis License becomes null and void to the extent applicable to Fonts or Font Software that has been modified and is distributed under the \"MgOpen\" name.\r\n\r\nThe Font Software may be sold as part of a larger software package but no copy of one or more of the Font Software typefaces may be sold by itself. \r\n\r\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL MAGENTA OR PERSONS OR BODIES IN CHARGE OF ADMINISTRATION AND MAINTENANCE OF THE FONT SOFTWARE BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.","manufacturer_name":"Μagenta ltd","font_sub_family_name":"Regular"},"descender":-334,"familyName":"Helvetiker","lineHeight":1522,"underlineThickness":50});
-},{}],7:[function(require,module,exports){
-var utils = require('../lib/utils');
-
-module.exports = utils.wrapAEventElement('a-click', 'click');
-
-},{"../lib/utils":19}],8:[function(require,module,exports){
-/* global HTMLElement */
-
-var aframeCore = require('aframe-core');
-var utils = require('../lib/utils');
-
-var registerElement = aframeCore.registerElement.registerElement;
-var stateEls = {};
-var listeners = {};
-var targetData = {};
-
-var attributeBlacklist = {
-  // TODO: Consider ignoring unique attributes too
-  // (e.g., `class`, `id`, `name`, etc.).
-  target: true
-};
-
-// State management
-
-function addState (el, state) {
-  el.addState(state);
-  recordState(el, state);
-}
-
-function recordState (el, state) {
-  if (state in stateEls) {
-    stateEls[state].push(el);
-  } else {
-    stateEls[state] = [el];
-  }
-}
-
-function unrecordState (el, state) {
-  if (!(state in stateEls)) { return; }
-  var elIdx = stateEls[state].indexOf(el);
-  if (elIdx === -1) { return; }
-  stateEls[state].splice(elIdx, 1);
-}
-
-function removeState (el, state) {
-  el.removeState(state);
-  unrecordState(el, state);
-}
-
-function hasState (el, state) {
-  if (!(state in stateEls)) { return false; }
-  var elIdx = stateEls[state].indexOf(el);
-  return elIdx !== -1;
-}
-
-// Unique event listeners
-
-function recordListener (el, type) {
-  if (type in listeners) {
-    listeners[type].push(el);
-  } else {
-    listeners[type] = [el];
-  }
-}
-
-function hasListener (el, type) {
-  if (!(type in listeners)) { return false; }
-  var elIdx = listeners[type].indexOf(el);
-  return elIdx !== -1;
-}
-
-function addDelegatedListener (el, type, listener, useCapture) {
-  if (hasListener(el, type)) { return; }  // Add the event listener only once.
-  recordListener(el, type);
-  el.addEventListener(type, listener, useCapture);
-}
-
-// Target data
-
-function recordTargetData (type, sourceEl, targetSel, attributes) {
-  var key = type;
-  var obj = {sourceEl: sourceEl, targetSel: targetSel, attributes: attributes};
-  if (key in targetData) {
-    targetData[key].push(obj);
-  } else {
-    targetData[key] = [obj];
-  }
-}
-
-function getTargetData (type) {
-  var key = type;
-  return targetData[key];
-}
-
-function targetListener (e) {
-  // Not to be confused with the `target` we are modifying below.
-  var eventFiredOnEl = getRealNode(e.target);
-  var eventType = e.type;
-
-  var allTargetData = getTargetData(eventType, eventFiredOnEl);
-  if (!allTargetData) { return; }
-
-  allTargetData.forEach(updateTargetEl);
-
-  function updateTargetEl (targetData) {
-    var sourceEl = targetData.sourceEl;
-    if (sourceEl !== eventFiredOnEl) { return; }
-
-    var targetAttributes = targetData.attributes;
-    // TODO: Support updating multiple elements later by using `$$` and iterating.
-    var targetSel = targetData.targetSel;
-    var targetEl = typeof targetSel === 'string' ? utils.$(targetSel) : targetSel;
-
-    if (!targetEl) { return; }
-
-    updateAttrs(targetEl, targetAttributes);
-  }
-}
-
-function updateAttrs (targetEl, targetAttributes) {
-  utils.$$(targetAttributes).forEach(function (attr) {
-    if (attr.name in attributeBlacklist) { return; }
-
-    if (attr.name === 'state') {
-      var states = utils.splitString(attr.value);
-      states.forEach(function (state) {
-        // Set the state on this element.
-        addState(targetEl, state);
-        // Remove the state on the other element(s).
-        stateEls[state].forEach(function (el) {
-          if (el === targetEl) { return; }  // Don't remove my state!
-          removeState(el, state);
-        });
-      });
-    } else {
-      targetEl.setAttribute(attr.name, attr.value);
-    }
-  });
-}
-
-// Synthesize events for cursor `mouseenter` and `mouseleave`
-
-window.addEventListener('stateadded', function (e) {
-  var detail = e.detail;
-  var state = detail.state;
-  var el = e.target;
-
-  recordState(el, state);
-
-  if (state === 'hovering') {
-    el.emit('mouseenter');
-  }
-  if (state === 'hovered') {
-    if (hasState(el, 'selected')) {
-      removeState(el, 'hovered');
-    }
-  }
-});
-
-window.addEventListener('stateremoved', function (e) {
-  var detail = e.detail;
-  var state = detail.state;
-  var el = e.target;
-
-  unrecordState(el, state);
-
-  if (state === 'hovering') {
-    el.emit('mouseleave');
-  }
-});
-
-/**
- * Returns the true node (useful for a wrapped object in a template instance).
- */
-function getRealNode (el) {
-  if (el.tagName.toLowerCase() === 'a-root') {
-    return el.parentNode;
-  }
-  if (!el.previousElementSibling && !el.nextElementSibling && el.closest('a-root')) {
-    return el.closest('a-root').parentNode;
-  }
-  return el;
-}
-
-var AEvent = registerElement(
-  'a-event',
-  {
-    prototype: Object.create(
-      HTMLElement.prototype,
-      {
-        attachedCallback: {
-          value: function () {
-            var self = this;
-            var el = self.parentNode;
-            if (el.isNode) {
-              attach();
-            } else {
-              el.addEventListener('nodeready', attach);
-            }
-
-            function attach () {
-              self.isAEvent = true;
-              self.type = self.type || self.getAttribute('type');
-              self.target = self.target || self.getAttribute('target');
-              self.sceneEl = utils.$('a-scene');
-              self.attachEventListener();
-            }
-          },
-          writable: window.debug
-        },
-
-        detachedCallback: {
-          value: function () {
-            // TODO: Remove all event listeners.
-          },
-          writable: window.debug
-        },
-
-        attributeChangedCallback: {
-          value: function (attr, oldVal, newVal) {
-            if (oldVal === newVal) { return; }
-            if (attr === 'type') {
-              this.type = newVal;
-            } else if (attr === 'target') {
-              this.target = newVal;
-            }
-          },
-          writable: window.debug
-        },
-
-        attachEventListener: {
-          value: function () {
-            var self = this;
-            var sourceEl;
-            var targetEl;
-            var listener;
-
-            // TODO: Land `on` PR in `aframe-core`: https://github.com/aframevr/aframe-core/pull/330
-
-            this.sceneEl = this.sceneEl || utils.$('a-scene');
-
-            if (self.type === 'load') {
-              sourceEl = getRealNode(self.parentNode);
-              targetEl = self.target ? utils.$(self.target) : sourceEl;
-              listener = function (e) {
-                if (e.target !== sourceEl) { return; }
-                updateAttrs(targetEl, self.attributes);
-              };
-              if (sourceEl && sourceEl.hasLoaded) {
-                listener(sourceEl);
-                return;
-              }
-              this.sceneEl.addEventListener('load', listener);
-              return;
-            }
-
-            listener = targetListener;
-
-            // We must delegate events because the target nodes may not exist yet.
-            addDelegatedListener(this.sceneEl, self.type, listener);
-            sourceEl = getRealNode(self.parentNode);
-            targetEl = self.target || sourceEl;
-            recordTargetData(self.type, sourceEl, targetEl, self.attributes);
-          },
-          writable: window.debug
-        }
-      }
-    )
-  }
-);
-
-module.exports = AEvent;
-
-},{"../lib/utils":19,"aframe-core":87}],9:[function(require,module,exports){
-var utils = require('../lib/utils');
-
-/**
- * We `hover` by applying attributes upon `mouseenter` and then
- * rolling back the changes upon `mouseleave` of the element.
- */
-module.exports = utils.wrapAEventElement('a-hover', 'mouseenter');
-
-},{"../lib/utils":19}],10:[function(require,module,exports){
-var utils = require('../lib/utils');
-
-module.exports = utils.wrapAEventElement('a-load', 'load');
-
-},{"../lib/utils":19}],11:[function(require,module,exports){
-var utils = require('../lib/utils');
-
-module.exports = utils.wrapAEventElement('a-mousedown', 'mousedown');
-
-},{"../lib/utils":19}],12:[function(require,module,exports){
-var utils = require('../lib/utils');
-
-module.exports = utils.wrapAEventElement('a-mouseenter', 'mouseenter');
-
-},{"../lib/utils":19}],13:[function(require,module,exports){
-var utils = require('../lib/utils');
-
-module.exports = utils.wrapAEventElement('a-mouseleave', 'mouseleave');
-
-},{"../lib/utils":19}],14:[function(require,module,exports){
-var utils = require('../lib/utils');
-
-module.exports = utils.wrapAEventElement('a-mouseup', 'mouseup');
-
-},{"../lib/utils":19}],15:[function(require,module,exports){
-module.exports = {
-  'a-click': require('./a-click'),
-  'a-event': require('./a-event'),
-  'a-hover': require('./a-hover'),
-  'a-load': require('./a-load'),
-  'a-mousedown': require('./a-mousedown'),
-  'a-mouseenter': require('./a-mouseenter'),
-  'a-mouseleave': require('./a-mouseleave'),
-  'a-mouseup': require('./a-mouseup')
-};
-
-},{"./a-click":7,"./a-event":8,"./a-hover":9,"./a-load":10,"./a-mousedown":11,"./a-mouseenter":12,"./a-mouseleave":13,"./a-mouseup":14}],16:[function(require,module,exports){
-/* global HTMLTemplateElement, HTMLImports, MutationObserver */
-
-window.addEventListener('HTMLImportsLoaded', injectFromPolyfilledImports);
-
-// NOTE: HTML Imports polyfill must come before we include `aframe-core`.
-if (!('import' in document.createElement('link'))) {
-  require('../lib/vendor/HTMLImports');
-}
-
-var aframeCore = require('aframe-core');
-var registerTemplate = require('./lib/register-template');
-var utils = require('./lib/utils');
-
-var registerElement = aframeCore.registerElement.registerElement;
-
-function injectFromPolyfilledImports () {
-  if (!HTMLImports || HTMLImports.useNative) { return; }
-
-  Object.keys(HTMLImports.importer.documents).forEach(function (key) {
-    var doc = HTMLImports.importer.documents[key];
-    insertTemplateElements(doc);
-  });
-}
-
-function insertTemplateElements (doc) {
-  var sceneEl = utils.$('a-scene');
-  var assetsEl = utils.$('a-assets');
-  if (!assetsEl) {
-    assetsEl = document.createElement('a-assets');
-    sceneEl.parentNode.insertBefore(assetsEl, sceneEl);
-  }
-
-  utils.$$('a-mixin', doc).forEach(function (mixinEl) {
-    var mixinCloneEl = document.importNode(mixinEl, true);
-    assetsEl.appendChild(mixinCloneEl);
-  });
-
-  utils.$$('template[is="a-template"]', doc).forEach(function (templateEl) {
-    var templateCloneEl = document.importNode(templateEl, true);
-    document.body.appendChild(templateCloneEl);
-  });
-}
-
-module.exports = registerElement(
-  'a-template',
-  {
-    extends: 'template',  // This lets us do `<template is="a-template">`.
-    prototype: Object.create(
-      HTMLTemplateElement.prototype,
-      {
-        createdCallback: {
-          value: function () {
-            var self = this;
-            self.placeholders = [];
-            // For Chrome: https://github.com/aframevr/aframe-core/issues/321
-            window.addEventListener('load', function () {
-              appendElement();
-              function appendElement () {
-                var isInDocument = self.ownerDocument === document;
-                // TODO: Handle `<a-mixin>` from imported templates for Chrome.
-                if (!isInDocument) { document.body.appendChild(self); }
-              }
-            });
-          },
-          writable: window.debug
-        },
-
-        attachedCallback: {
-          value: function () {
-            this.load();
-            this.inject();
-          },
-          writable: window.debug
-        },
-
-        detachedCallback: {
-          value: function () {
-            // XXX: Hack for VS to hide templates from source.
-            // var self = this;
-            // self.removeTemplateListener();
-            // self.placeholders.forEach(function (el) {
-            //   self.sceneEl.remove(el);
-            // });
-          },
-          writable: window.debug
-        },
-
-        load: {
-          value: function () {
-            // To prevent emitting the loaded event more than once.
-            if (this.hasLoaded) { return; }
-            utils.fireEvent(this, 'loaded');
-            this.hasLoaded = true;
-          },
-          writable: window.debug
-        },
-
-        register: {
-          value: function (tagName) {
-            if (this.registered) { return; }
-            this.registered = true;
-            return registerTemplate(tagName);
-          },
-          writable: window.debug
-        },
-
-        removeTemplateListener: {
-          value: function () {
-            if (!this.mixinObserver) { return; }
-            this.mixinObserver.disconnect();
-            this.mixinObserver = null;
-          },
-          writable: window.debug
-        },
-
-        attachTemplateListener: {
-          value: function (tagName) {
-            var self = this;
-            if (self.mixinObserver) { self.mixinObserver.disconnect(); }
-            self.mixinObserver = new MutationObserver(function (mutations) {
-              self.placeholders.forEach(function (el) {
-                el.rerender(true);
-              });
-            });
-            self.mixinObserver.observe(self, {
-              attributes: true,
-              characterData: true,
-              childList: true,
-              subtree: true
-            });
-          },
-          writable: window.debug
-        },
-
-        inject: {
-          value: function () {
-            var self = this;
-
-            if (self.injected) { return; }
-            self.injected = true;
-
-            var tagName = self.getAttribute('element');
-            if (!tagName) { return; }
-
-            self.attachTemplateListener(tagName);
-            self.register(tagName);
-          },
-          writable: window.debug
-        }
-      }
-    )
-  }
-);
-
-},{"../lib/vendor/HTMLImports":35,"./lib/register-template":18,"./lib/utils":19,"aframe-core":87}],17:[function(require,module,exports){
-var modules = {
-  'a-event': require('./a-event'),
-  'a-template': require('./a-template')
-};
-
-// This injects the template definitions into the page.
-require('./templates/index.html');
-
-module.exports = modules;
-
-},{"./a-event":15,"./a-template":16,"./templates/index.html":33}],18:[function(require,module,exports){
-var aframeCore = require('aframe-core');
-var utils = require('./utils');
-
-var registerElement = aframeCore.registerElement.registerElement;
-var AEntity = aframeCore.AEntity;
-var AComponents = aframeCore.AComponents;
-
-var ATTRIBUTE_BLACKLIST = utils.extend({
-  id: true,
-  name: true,
-  class: true,
-  target: true
-});
-var COMPONENT_BLACKLIST = utils.extend({}, AComponents);
-
-registerElement('a-root', {prototype: Object.create(AEntity.prototype)});
-
-module.exports = function (tagName) {
-  var tagNameLower = tagName.toLowerCase();
-
-  return registerElement(
-    tagNameLower,
-    {
-      prototype: Object.create(
-        AEntity.prototype, {
-          attachedCallback: {
-            value: function () {
-              // We emit an event so `<a-entity>` knows when we've been
-              // registered and adds our children as `object3D`s.
-              this.emit('nodeready');
-              this.rerender(false, true);
-            }
-          },
-
-          attributeChangedCallback: {
-            value: function (attr, oldVal, newVal) {
-              if (oldVal === newVal) { return; }
-              this.rerender();
-            },
-            writable: window.debug
-          },
-
-          attributeBlacklist: {
-            value: ATTRIBUTE_BLACKLIST,
-            writable: window.debug
-          },
-
-          componentBlacklist: {
-            value: COMPONENT_BLACKLIST,
-            writable: window.debug
-          },
-
-          detachedCallback: {
-            value: function () {
-              if (!this.sceneEl) {
-                this.sceneEl = utils.$('a-scene');
-              }
-              this.sceneEl.remove(this);
-            },
-            writable: window.debug
-          },
-
-          rerender: {
-            value: function (force, firstTime) {
-              var self = this;
-              if (!force && this.lastOuterHTML === this.outerHTML) { return; }
-              var template = utils.$('template[is="a-template"][element="' + tagName + '"]');
-              if (!template) { return; }
-
-              // Use the defaults defined on the original `<template is="a-template">`.
-              var templateAttrs = utils.mergeAttrs(template, this);
-              utils.forEach(template.attributes, function (attr) {
-                if (attr.name in self.componentBlacklist) {
-                  if (firstTime) {
-                    utils.warn('Cannot use attribute name "%s" for template ' +
-                      'definition of <%s> because it is a core component',
-                      attr.name, tagNameLower);
-                  }
-                  delete templateAttrs[attr.name];
-                }
-              });
-              Object.keys(templateAttrs).filter(function (key) {
-                if (key in this.attributeBlacklist) {
-                  // Move these unique identifier attributes over
-                  // (i.e., `id`, `name`, `class`, `target`).
-                  delete templateAttrs[key];
-                }
-                var value = templateAttrs[key];
-                var component = this.components[key];
-                if (component && typeof value === 'object') {
-                  templateAttrs[key] = component.stringify(value);
-                }
-              }, this);
-
-              this.root = utils.$$(this.children).filter(function (el) {
-                return el.tagName.toLowerCase() === 'a-root';
-              })[0];
-
-              if (!this.root) {
-                this.root = document.createElement('a-root');
-                this.appendChild(this.root);
-              }
-
-              var newHTML = utils.format(template.innerHTML, templateAttrs);
-              if (newHTML !== this.root.innerHTML) {
-                this.root.innerHTML = newHTML;
-              }
-
-              this.lastOuterHTML = this.outerHTML;
-            },
-            writable: window.debug
-          }
-        }
-      )
-    });
-};
-
-},{"./utils":19,"aframe-core":87}],19:[function(require,module,exports){
-var aframeCore = require('aframe-core');
-var AEvent = require('../a-event/a-event');
-
-var aframeCoreUtils = aframeCore.utils;
-var registerElement = aframeCore.registerElement.registerElement;
-
-/**
- * Wraps `querySelector` à la jQuery's `$`.
- *
- * @param {String|Element} sel CSS selector to match an element.
- * @param {Element=} parent Parent from which to query.
- * @returns {Element} Element matched by selector.
- */
-module.exports.$ = function (sel, parent) {
-  var el = sel;
-  if (sel && typeof sel === 'string') {
-    el = (parent || document).querySelector(sel);
-  }
-  return el;
-};
-
-/**
- * Wraps `querySelectorAll` à la jQuery's `$`.
- *
- * @param {String|Element} sel CSS selector to match elements.
- * @param {Element=} parent Parent from which to query.
- * @returns {Array} Array of elements matched by selector.
- */
-module.exports.$$ = function (sel, parent) {
-  if (Array.isArray(sel)) { return sel; }
-  var els = sel;
-  if (sel && typeof sel === 'string') {
-    els = (parent || document).querySelectorAll(sel);
-  }
-  return toArray(els);
-};
-
-/**
- * Turns an array-like object into an array.
- *
- * @param {String|Element} obj CSS selector to match elements.
- * @param {Array|NamedNodeMap|NodeList|HTMLCollection} arr An array-like object.
- * @returns {Array} Array of elements matched by selector.
- */
-var toArray = module.exports.toArray = function (obj) {
-  if (Array.isArray(obj)) { return obj; }
-  if (typeof obj === 'object' && typeof obj.length === 'number') {
-    return Array.prototype.slice.call(obj);
-  }
-  return [obj];
-};
-
-/**
- * Wraps `Array.prototype.forEach`.
- *
- * @param {Object} arr An array-like object.
- * @returns {Array} A real array.
- */
-var forEach = module.exports.forEach = function (arr, fn) {
-  return Array.prototype.forEach.call(arr, fn);
-};
-
-/**
- * Merges attributes à la `Object.assign`.
- *
- * @param {...Object} els
- *   Array-like object (NodeMap, array, etc.) of
- *   parent elements from which to query.
- * @returns {Array} Array of merged attributes.
- */
-module.exports.mergeAttrs = function () {
-  var mergedAttrs = {};
-  forEach(arguments, function (el) {
-    forEach(el.attributes, function (attr) {
-      // NOTE: We use `getComputedAttribute` instead of `attr.value` so our
-      // wrapper for coordinate objects, etc. gets used.
-      if (el.getComputedAttribute) {
-        mergedAttrs[attr.name] = el.getComputedAttribute(attr.name);
-      } else {
-        mergedAttrs[attr.name] = el.getAttribute(attr.name);
-      }
-    });
-  });
-  return mergedAttrs;
-};
-
-/**
- * Does ES6-style (or mustache-style) string formatting.
- *
- * > format('${0}', ['zzz'])
- * "zzz"
- *
- * > format('${0}{1}', 1, 2)
- * "12"
- *
- * > format('${x}', {x: 1})
- * "1"
- *
- * > format('my favourite color is ${color=blue}', {x: 1})
- * "my favourite color is blue"
- *
- * @returns {String} Formatted string with interpolated variables.
- */
-module.exports.format = (function () {
-  var regexes = [
-    /\$?\{\s*([^}= ]+)(\s*=\s*(.+))?\s*\}/g,
-    /\$?%7B\s*([^}= ]+)(\s*=\s*(.+))?\s*%7D/g
-  ];
-  return function (s, args) {
-    if (!s) { throw new Error('Format string is empty!'); }
-    if (!args) { return; }
-    if (!(args instanceof Array || args instanceof Object)) {
-      args = Array.prototype.slice.call(arguments, 1);
-    }
-    Object.keys(args).forEach(function (key) {
-      args[String(key).toLowerCase()] = args[key];
-    });
-    regexes.forEach(function (re) {
-      s = s.replace(re, function (_, name, rhs, defaultVal) {
-        var val = args[name.toLowerCase()];
-
-        if (typeof val === 'undefined') {
-          return (defaultVal || '').trim().replace(/^["']|["']$/g, '');
-        }
-
-        return (val || '').trim().replace(/^["']|["']$/g, '');
-      });
-    });
-    return s;
-  };
-})();
-
-/**
- * Wraps an element as a new one with a different name.
- *
- * @param {String} newTagName - Name of the new custom element.
- * @param {Element} srcElement - Original custom element to wrap.
- * @param {Object=} [data={}] - Data for the new prototype.
- * @returns {Array} Wrapped custom element.
- */
-var wrapElement = module.exports.wrapElement = function (newTagName, srcElement, data) {
-  data = data || {};
-  return registerElement(newTagName, {
-    prototype: Object.create(srcElement.prototype, data)
-  });
-};
-
-/**
- * Wraps `<a-event>` for a particular event `type`.
- *
- * @param {String} newTagName - Name of the new custom element.
- * @param {Element} eventName - Name of event type.
- * @param {Object=} [data={}] - Data for the new prototype.
- * @returns {Array} Wrapped custom element.
- */
-module.exports.wrapAEventElement = function (newTagName, eventName, data) {
-  data = data || {};
-  data.type = {
-    value: eventName,
-    writable: window.debug
-  };
-  return wrapElement(newTagName, AEvent, data);
-};
-
-// Useful utils from aframe-core.
-module.exports.error = aframeCoreUtils.error;
-module.exports.extend = aframeCoreUtils.extend;
-module.exports.fireEvent = aframeCoreUtils.fireEvent;
-module.exports.log = aframeCoreUtils.log;
-module.exports.splitString = aframeCoreUtils.splitString;
-module.exports.warn = aframeCoreUtils.warn;
-
-},{"../a-event/a-event":8,"aframe-core":87}],20:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-camera\" fov=\"80\" near=\"0.5\" far=\"10000\" look-controls-enabled=\"true\" wasd-controls-enabled=\"true\" cursor-visible=\"true\" cursor-offset=\"1\" cursor-color=\"#FFF\" cursor-maxdistance=\"1000\" cursor-scale=\"1\" cursor-opacity=\"1\">\n  <a-entity camera=\"fov: ${fov}; near: ${near}; far: ${far}\" look-controls=\"enabled: ${look-controls-enabled}\" wasd-controls=\"enabled: ${wasd-controls-enabled}\">\n    <a-entity visible=\"${cursor-visible}\" position=\"0 0 -${cursor-offset}\" geometry=\"primitive: ring; radiusOuter: 0.016; radiusInner: 0.01\" material=\"color: ${cursor-color}; shader: flat; transparent: true; opacity: ${cursor-opacity}\" scale=\"${cursor-scale} ${cursor-scale} ${cursor-scale}\" cursor=\"maxDistance: ${cursor-maxdistance};\">\n    </a-entity>\n  </a-entity>\n</template>");
-
-})
-},{}],21:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-cube\" width=\"1.5\" height=\"1.5\" depth=\"1.5\" translate=\"0 0 0\" color=\"gray\" opacity=\"1.0\" shader=\"standard\" transparent=\"true\" metalness=\"0.0\" roughness=\"0.5\" src=\"\">\n  <a-entity geometry=\"primitive: box;\n                      width: ${width};\n                      height: ${height};\n                      depth: ${depth};\n                      translate: ${translate}\" material=\"color: ${color};\n                      opacity: ${opacity};\n                      shader: ${shader};\n                      transparent: ${transparent};\n                      metalness: ${metalness};\n                      roughness: ${roughness};\n                      src: url(${src})\"></a-entity>\n</template>");
-
-})
-},{}],22:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-curvedimage\" radius=\"1\" height=\"1\" segments-radius=\"48\" theta-start=\"0\" theta-length=\"360\" opacity=\"1.0\" transparent=\"true\" src=\"\">\n  <a-entity geometry=\"primitive: cylinder;\n                      radius: ${radius};\n                      height: ${height};\n                      segmentsRadius: ${segments-radius};\n                      segmentsHeight: 1;\n                      thetaStart: ${theta-start};\n                      thetaLength: ${theta-length};\n                      openEnded: true\" scale=\"1 1 -1\" material=\"opacity: ${opacity};\n                      shader: flat;\n                      side: double;\n                      transparent: ${transparent};\n                      src: url(${src})\"></a-entity>\n</template>");
-
-})
-},{}],23:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-cylinder\" radius=\"0.75\" radius-top=\"0.75\" radius-bottom=\"0.75\" height=\"1.5\" segments-radial=\"36\" segments-height=\"1\" theta-start=\"0\" theta-length=\"360\" open-ended=\"false\" translate=\"0 0 0\" color=\"gray\" opacity=\"1.0\" shader=\"standard\" transparent=\"true\" metalness=\"0.0\" roughness=\"0.5\" side=\"front\" src=\"\">\n  <a-entity geometry=\"primitive: cylinder;\n                      radius: ${radius};\n                      radiusTop: ${radius-top};\n                      radiusBottom: ${radius-bottom};\n                      height: ${height};\n                      segmentsRadial: ${segments-radial};\n                      segmentsHeight: ${segments-height};\n                      thetaStart: ${theta-start};\n                      thetaLength: ${theta-length};\n                      openEnded: ${open-ended};\n                      translate: ${translate}\" material=\"color: ${color};\n                      opacity: ${opacity};\n                      shader: ${shader};\n                      metalness: ${metalness};\n                      roughness: ${roughness};\n                      side: ${side};\n                      transparent: ${transparent};\n                      src: url(${src})\"></a-entity>\n</template>");
-
-})
-},{}],24:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-frame\" size=\"10\" thickness=\"0.1\" color=\"#404040\">\n  <a-cube position=\"5 5 0\" rotation=\"0 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"5 -5 0\" rotation=\"0 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"-5 5 0\" rotation=\"0 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"-5 -5 0\" rotation=\"0 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n\n  <a-cube position=\"0 5 5\" rotation=\"0 90 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"0 5 -5\" rotation=\"0 90 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"0 -5 5\" rotation=\"0 90 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"0 -5 -5\" rotation=\"0 90 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n\n  <a-cube position=\"5 0 5\" rotation=\"90 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"5 0 -5\" rotation=\"90 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"-5 0 5\" rotation=\"90 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"-5 0 -5\" rotation=\"90 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n</template>");
-
-})
-},{}],25:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-image\" width=\"1.75\" height=\"1.75\" opacity=\"1.0\" src=\"\">\n  <a-entity geometry=\"primitive: plane;\n                      width: ${width};\n                      height: ${height}\" material=\"shader: flat;\n                      src: url(${src});\n                      opacity: ${opacity};\n                      side: double;\n                      transparent: true\">\n  </a-entity>\n</template>");
-
-})
-},{}],26:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-light\" angle=\"60\" color=\"#fff\" ground-color=\"#fff\" decay=\"1\" distance=\"0.0\" exponent=\"10.0\" intensity=\"1.0\" type=\"directional\">\n  <a-entity light=\"angle: ${angle};\n                   color: ${color};\n                   groundColor: ${ground-color};\n                   decay: ${decay};\n                   distance: ${distance};\n                   exponent: ${exponent};\n                   intensity: ${intensity};\n                   type: ${type}\">\n  </a-entity>\n</template>");
-
-})
-},{}],27:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-model\" opacity=\"1.0\" src=\"\" format=\"collada\">\n  <a-entity material=\"opacity: ${opacity}\" loader=\"src: url(${src}); format: ${format}\">\n  </a-entity>\n</template>");
-
-})
-},{}],28:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-plane\" width=\"1.75\" height=\"1.75\" translate=\"0 0 0\" color=\"gray\" opacity=\"1.0\" shader=\"standard\" transparent=\"true\" metalness=\"0.0\" roughness=\"0.5\" src=\"\">\n  <a-entity geometry=\"primitive: plane;\n                      height: ${height};\n                      width: ${width};\n                      translate: ${translate}\" material=\"color: ${color};\n                      opacity: ${opacity};\n                      shader: ${shader};\n                      transparent: ${transparent};\n                      metalness: ${metalness};\n                      roughness: ${roughness};\n                      side: double;\n                      src: url(${src})\"></a-entity>\n</template>");
-
-})
-},{}],29:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-sky\" src=\"\" color=\"#FFF\" radius=\"5000\" segments-width=\"64\" segments-height=\"64\">\n  <a-entity geometry=\"primitive: sphere;\n                      radius: ${radius};\n                      segmentsWidth: ${segments-width};\n                      segmentsHeight: ${segments-height}\" material=\"shader: flat; \n                      src: url(${src});\n                      color: ${color};\n                      fog: false\" scale=\"-1 1 1\">\n  </a-entity>\n</template>");
-
-})
-},{}],30:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-sphere\" radius=\"0.85\" segments-width=\"36\" segments-height=\"18\" translate=\"0 0 0\" color=\"gray\" opacity=\"1.0\" shader=\"standard\" transparent=\"true\" metalness=\"0.0\" roughness=\"0.5\" src=\"\">\n  <a-entity geometry=\"primitive: sphere;\n                      radius: ${radius};\n                      segmentsWidth: ${segments-width};\n                      segmentsHeight: ${segments-height};\n                      translate: ${translate}\" material=\"color: ${color};\n                      opacity: ${opacity};\n                      shader: ${shader};\n                      transparent: ${transparent};\n                      metalness: ${metalness};\n                      roughness: ${roughness};\n                      src: url(${src})\"></a-entity>\n</template>");
-
-})
-},{}],31:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-video\" src=\"\" width=\"3\" height=\"1.75\" translate=\"0 0 0\" autoplay=\"true\" loop=\"true\" crossorigin=\"anonymous\">\n  <video id=\"video\" src=\"${src}\" width=\"${width}\" height=\"${height}\" autoplay=\"${autoplay}\" loop=\"${loop}\" crossorigin=\"${crossOrigin}\" style=\"display: none\">\n  </video>\n  <a-entity geometry=\"primitive: plane;\n                      height: ${height};\n                      width: ${width};\n                      translate: ${translate}\" material=\"shader: flat; src: #video\">\n  </a-entity>\n</template>");
-
-})
-},{}],32:[function(require,module,exports){
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-videosphere\" src=\"\" radius=\"5000\" segments-width=\"64\" segments-height=\"64\" autoplay=\"true\" loop=\"true\" crossorigin=\"anonymous\">\n  <video id=\"video\" src=\"${src}\" width=\"1000\" height=\"500\" autoplay=\"${autoplay}\" loop=\"${loop}\" crossorigin=\"${crossOrigin}\" style=\"display: none\">\n  </video>\n  <a-entity geometry=\"primitive: sphere;\n                      radius: ${radius};\n                      segmentsWidth: ${segments-width};\n                      segmentsHeight: ${segments-height};\" material=\"shader: flat; src: #video;\" scale=\"-1 1 1\">\n  </a-entity>\n</template>");
-
-})
-},{}],33:[function(require,module,exports){
-require("./a-camera.html");
-require("./a-cube.html");
-require("./a-curvedimage.html");
-require("./a-cylinder.html");
-require("./a-frame.html");
-require("./a-image.html");
-require("./a-light.html");
-require("./a-model.html");
-require("./a-plane.html");
-require("./a-sky/index.html");
-require("./a-sphere.html");
-require("./a-video.html");
-require("./a-videosphere.html");
-document.addEventListener("DOMContentLoaded",function() {
-var head = document.getElementsByTagName("head")[0];
-head.insertAdjacentHTML("beforeend","<meta charset=\"utf-8\">");
-
-})
-},{"./a-camera.html":20,"./a-cube.html":21,"./a-curvedimage.html":22,"./a-cylinder.html":23,"./a-frame.html":24,"./a-image.html":25,"./a-light.html":26,"./a-model.html":27,"./a-plane.html":28,"./a-sky/index.html":29,"./a-sphere.html":30,"./a-video.html":31,"./a-videosphere.html":32}],34:[function(require,module,exports){
-var aframeCore = require('aframe-core');
-var coreElements = require('./elements/');
-var pkg = require('./package');
-var registerTemplate = require('./elements/lib/register-template');
-
-module.exports = {
-  // Main library.
-  aframeCore: aframeCore,
-
-  // Custom elements.
-  elements: {
-    core: coreElements
-  },
-
-  // Register custom elements.
-  registerTemplate: registerTemplate,
-
-  // Package version.
-  version: pkg.version
-};
-
-},{"./elements/":17,"./elements/lib/register-template":18,"./package":95,"aframe-core":87}],35:[function(require,module,exports){
-/**
- * @license
- * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
- * This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
- * The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
- * The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
- * Code distributed by Google as part of the polymer project is also
- * subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
- */
-// @version 0.7.14-c469b00
-if (typeof WeakMap === "undefined") {
-  (function() {
-    var defineProperty = Object.defineProperty;
-    var counter = Date.now() % 1e9;
-    var WeakMap = function() {
-      this.name = "__st" + (Math.random() * 1e9 >>> 0) + (counter++ + "__");
-    };
-    WeakMap.prototype = {
-      set: function(key, value) {
-        var entry = key[this.name];
-        if (entry && entry[0] === key) entry[1] = value; else defineProperty(key, this.name, {
-          value: [ key, value ],
-          writable: true
-        });
-        return this;
-      },
-      get: function(key) {
-        var entry;
-        return (entry = key[this.name]) && entry[0] === key ? entry[1] : undefined;
-      },
-      "delete": function(key) {
-        var entry = key[this.name];
-        if (!entry || entry[0] !== key) return false;
-        entry[0] = entry[1] = undefined;
-        return true;
-      },
-      has: function(key) {
-        var entry = key[this.name];
-        if (!entry) return false;
-        return entry[0] === key;
-      }
-    };
-    window.WeakMap = WeakMap;
-  })();
-}
-
-(function(global) {
-  var registrationsTable = new WeakMap();
-  var setImmediate;
-  if (/Trident|Edge/.test(navigator.userAgent)) {
-    setImmediate = setTimeout;
-  } else if (window.setImmediate) {
-    setImmediate = window.setImmediate;
-  } else {
-    var setImmediateQueue = [];
-    var sentinel = String(Math.random());
-    window.addEventListener("message", function(e) {
-      if (e.data === sentinel) {
-        var queue = setImmediateQueue;
-        setImmediateQueue = [];
-        queue.forEach(function(func) {
-          func();
-        });
-      }
-    });
-    setImmediate = function(func) {
-      setImmediateQueue.push(func);
-      window.postMessage(sentinel, "*");
-    };
-  }
-  var isScheduled = false;
-  var scheduledObservers = [];
-  function scheduleCallback(observer) {
-    scheduledObservers.push(observer);
-    if (!isScheduled) {
-      isScheduled = true;
-      setImmediate(dispatchCallbacks);
-    }
-  }
-  function wrapIfNeeded(node) {
-    return window.ShadowDOMPolyfill && window.ShadowDOMPolyfill.wrapIfNeeded(node) || node;
-  }
-  function dispatchCallbacks() {
-    isScheduled = false;
-    var observers = scheduledObservers;
-    scheduledObservers = [];
-    observers.sort(function(o1, o2) {
-      return o1.uid_ - o2.uid_;
-    });
-    var anyNonEmpty = false;
-    observers.forEach(function(observer) {
-      var queue = observer.takeRecords();
-      removeTransientObserversFor(observer);
-      if (queue.length) {
-        observer.callback_(queue, observer);
-        anyNonEmpty = true;
-      }
-    });
-    if (anyNonEmpty) dispatchCallbacks();
-  }
-  function removeTransientObserversFor(observer) {
-    observer.nodes_.forEach(function(node) {
-      var registrations = registrationsTable.get(node);
-      if (!registrations) return;
-      registrations.forEach(function(registration) {
-        if (registration.observer === observer) registration.removeTransientObservers();
-      });
-    });
-  }
-  function forEachAncestorAndObserverEnqueueRecord(target, callback) {
-    for (var node = target; node; node = node.parentNode) {
-      var registrations = registrationsTable.get(node);
-      if (registrations) {
-        for (var j = 0; j < registrations.length; j++) {
-          var registration = registrations[j];
-          var options = registration.options;
-          if (node !== target && !options.subtree) continue;
-          var record = callback(options);
-          if (record) registration.enqueue(record);
-        }
-      }
-    }
-  }
-  var uidCounter = 0;
-  function JsMutationObserver(callback) {
-    this.callback_ = callback;
-    this.nodes_ = [];
-    this.records_ = [];
-    this.uid_ = ++uidCounter;
-  }
-  JsMutationObserver.prototype = {
-    observe: function(target, options) {
-      target = wrapIfNeeded(target);
-      if (!options.childList && !options.attributes && !options.characterData || options.attributeOldValue && !options.attributes || options.attributeFilter && options.attributeFilter.length && !options.attributes || options.characterDataOldValue && !options.characterData) {
-        throw new SyntaxError();
-      }
-      var registrations = registrationsTable.get(target);
-      if (!registrations) registrationsTable.set(target, registrations = []);
-      var registration;
-      for (var i = 0; i < registrations.length; i++) {
-        if (registrations[i].observer === this) {
-          registration = registrations[i];
-          registration.removeListeners();
-          registration.options = options;
-          break;
-        }
-      }
-      if (!registration) {
-        registration = new Registration(this, target, options);
-        registrations.push(registration);
-        this.nodes_.push(target);
-      }
-      registration.addListeners();
-    },
-    disconnect: function() {
-      this.nodes_.forEach(function(node) {
-        var registrations = registrationsTable.get(node);
-        for (var i = 0; i < registrations.length; i++) {
-          var registration = registrations[i];
-          if (registration.observer === this) {
-            registration.removeListeners();
-            registrations.splice(i, 1);
-            break;
-          }
-        }
-      }, this);
-      this.records_ = [];
-    },
-    takeRecords: function() {
-      var copyOfRecords = this.records_;
-      this.records_ = [];
-      return copyOfRecords;
-    }
-  };
-  function MutationRecord(type, target) {
-    this.type = type;
-    this.target = target;
-    this.addedNodes = [];
-    this.removedNodes = [];
-    this.previousSibling = null;
-    this.nextSibling = null;
-    this.attributeName = null;
-    this.attributeNamespace = null;
-    this.oldValue = null;
-  }
-  function copyMutationRecord(original) {
-    var record = new MutationRecord(original.type, original.target);
-    record.addedNodes = original.addedNodes.slice();
-    record.removedNodes = original.removedNodes.slice();
-    record.previousSibling = original.previousSibling;
-    record.nextSibling = original.nextSibling;
-    record.attributeName = original.attributeName;
-    record.attributeNamespace = original.attributeNamespace;
-    record.oldValue = original.oldValue;
-    return record;
-  }
-  var currentRecord, recordWithOldValue;
-  function getRecord(type, target) {
-    return currentRecord = new MutationRecord(type, target);
-  }
-  function getRecordWithOldValue(oldValue) {
-    if (recordWithOldValue) return recordWithOldValue;
-    recordWithOldValue = copyMutationRecord(currentRecord);
-    recordWithOldValue.oldValue = oldValue;
-    return recordWithOldValue;
-  }
-  function clearRecords() {
-    currentRecord = recordWithOldValue = undefined;
-  }
-  function recordRepresentsCurrentMutation(record) {
-    return record === recordWithOldValue || record === currentRecord;
-  }
-  function selectRecord(lastRecord, newRecord) {
-    if (lastRecord === newRecord) return lastRecord;
-    if (recordWithOldValue && recordRepresentsCurrentMutation(lastRecord)) return recordWithOldValue;
-    return null;
-  }
-  function Registration(observer, target, options) {
-    this.observer = observer;
-    this.target = target;
-    this.options = options;
-    this.transientObservedNodes = [];
-  }
-  Registration.prototype = {
-    enqueue: function(record) {
-      var records = this.observer.records_;
-      var length = records.length;
-      if (records.length > 0) {
-        var lastRecord = records[length - 1];
-        var recordToReplaceLast = selectRecord(lastRecord, record);
-        if (recordToReplaceLast) {
-          records[length - 1] = recordToReplaceLast;
-          return;
-        }
-      } else {
-        scheduleCallback(this.observer);
-      }
-      records[length] = record;
-    },
-    addListeners: function() {
-      this.addListeners_(this.target);
-    },
-    addListeners_: function(node) {
-      var options = this.options;
-      if (options.attributes) node.addEventListener("DOMAttrModified", this, true);
-      if (options.characterData) node.addEventListener("DOMCharacterDataModified", this, true);
-      if (options.childList) node.addEventListener("DOMNodeInserted", this, true);
-      if (options.childList || options.subtree) node.addEventListener("DOMNodeRemoved", this, true);
-    },
-    removeListeners: function() {
-      this.removeListeners_(this.target);
-    },
-    removeListeners_: function(node) {
-      var options = this.options;
-      if (options.attributes) node.removeEventListener("DOMAttrModified", this, true);
-      if (options.characterData) node.removeEventListener("DOMCharacterDataModified", this, true);
-      if (options.childList) node.removeEventListener("DOMNodeInserted", this, true);
-      if (options.childList || options.subtree) node.removeEventListener("DOMNodeRemoved", this, true);
-    },
-    addTransientObserver: function(node) {
-      if (node === this.target) return;
-      this.addListeners_(node);
-      this.transientObservedNodes.push(node);
-      var registrations = registrationsTable.get(node);
-      if (!registrations) registrationsTable.set(node, registrations = []);
-      registrations.push(this);
-    },
-    removeTransientObservers: function() {
-      var transientObservedNodes = this.transientObservedNodes;
-      this.transientObservedNodes = [];
-      transientObservedNodes.forEach(function(node) {
-        this.removeListeners_(node);
-        var registrations = registrationsTable.get(node);
-        for (var i = 0; i < registrations.length; i++) {
-          if (registrations[i] === this) {
-            registrations.splice(i, 1);
-            break;
-          }
-        }
-      }, this);
-    },
-    handleEvent: function(e) {
-      e.stopImmediatePropagation();
-      switch (e.type) {
-       case "DOMAttrModified":
-        var name = e.attrName;
-        var namespace = e.relatedNode.namespaceURI;
-        var target = e.target;
-        var record = new getRecord("attributes", target);
-        record.attributeName = name;
-        record.attributeNamespace = namespace;
-        var oldValue = e.attrChange === MutationEvent.ADDITION ? null : e.prevValue;
-        forEachAncestorAndObserverEnqueueRecord(target, function(options) {
-          if (!options.attributes) return;
-          if (options.attributeFilter && options.attributeFilter.length && options.attributeFilter.indexOf(name) === -1 && options.attributeFilter.indexOf(namespace) === -1) {
-            return;
-          }
-          if (options.attributeOldValue) return getRecordWithOldValue(oldValue);
-          return record;
-        });
-        break;
-
-       case "DOMCharacterDataModified":
-        var target = e.target;
-        var record = getRecord("characterData", target);
-        var oldValue = e.prevValue;
-        forEachAncestorAndObserverEnqueueRecord(target, function(options) {
-          if (!options.characterData) return;
-          if (options.characterDataOldValue) return getRecordWithOldValue(oldValue);
-          return record;
-        });
-        break;
-
-       case "DOMNodeRemoved":
-        this.addTransientObserver(e.target);
-
-       case "DOMNodeInserted":
-        var changedNode = e.target;
-        var addedNodes, removedNodes;
-        if (e.type === "DOMNodeInserted") {
-          addedNodes = [ changedNode ];
-          removedNodes = [];
-        } else {
-          addedNodes = [];
-          removedNodes = [ changedNode ];
-        }
-        var previousSibling = changedNode.previousSibling;
-        var nextSibling = changedNode.nextSibling;
-        var record = getRecord("childList", e.target.parentNode);
-        record.addedNodes = addedNodes;
-        record.removedNodes = removedNodes;
-        record.previousSibling = previousSibling;
-        record.nextSibling = nextSibling;
-        forEachAncestorAndObserverEnqueueRecord(e.relatedNode, function(options) {
-          if (!options.childList) return;
-          return record;
-        });
-      }
-      clearRecords();
-    }
-  };
-  global.JsMutationObserver = JsMutationObserver;
-  if (!global.MutationObserver) global.MutationObserver = JsMutationObserver;
-})(self);
-
-window.HTMLImports = window.HTMLImports || {
-  flags: {}
-};
-
-(function(scope) {
-  var IMPORT_LINK_TYPE = "import";
-  var useNative = Boolean(IMPORT_LINK_TYPE in document.createElement("link"));
-  var hasShadowDOMPolyfill = Boolean(window.ShadowDOMPolyfill);
-  var wrap = function(node) {
-    return hasShadowDOMPolyfill ? window.ShadowDOMPolyfill.wrapIfNeeded(node) : node;
-  };
-  var rootDocument = wrap(document);
-  var currentScriptDescriptor = {
-    get: function() {
-      var script = window.HTMLImports.currentScript || document.currentScript || (document.readyState !== "complete" ? document.scripts[document.scripts.length - 1] : null);
-      return wrap(script);
-    },
-    configurable: true
-  };
-  Object.defineProperty(document, "_currentScript", currentScriptDescriptor);
-  Object.defineProperty(rootDocument, "_currentScript", currentScriptDescriptor);
-  var isIE = /Trident/.test(navigator.userAgent);
-  function whenReady(callback, doc) {
-    doc = doc || rootDocument;
-    whenDocumentReady(function() {
-      watchImportsLoad(callback, doc);
-    }, doc);
-  }
-  var requiredReadyState = isIE ? "complete" : "interactive";
-  var READY_EVENT = "readystatechange";
-  function isDocumentReady(doc) {
-    return doc.readyState === "complete" || doc.readyState === requiredReadyState;
-  }
-  function whenDocumentReady(callback, doc) {
-    if (!isDocumentReady(doc)) {
-      var checkReady = function() {
-        if (doc.readyState === "complete" || doc.readyState === requiredReadyState) {
-          doc.removeEventListener(READY_EVENT, checkReady);
-          whenDocumentReady(callback, doc);
-        }
-      };
-      doc.addEventListener(READY_EVENT, checkReady);
-    } else if (callback) {
-      callback();
-    }
-  }
-  function markTargetLoaded(event) {
-    event.target.__loaded = true;
-  }
-  function watchImportsLoad(callback, doc) {
-    var imports = doc.querySelectorAll("link[rel=import]");
-    var parsedCount = 0, importCount = imports.length, newImports = [], errorImports = [];
-    function checkDone() {
-      if (parsedCount == importCount && callback) {
-        callback({
-          allImports: imports,
-          loadedImports: newImports,
-          errorImports: errorImports
-        });
-      }
-    }
-    function loadedImport(e) {
-      markTargetLoaded(e);
-      newImports.push(this);
-      parsedCount++;
-      checkDone();
-    }
-    function errorLoadingImport(e) {
-      errorImports.push(this);
-      parsedCount++;
-      checkDone();
-    }
-    if (importCount) {
-      for (var i = 0, imp; i < importCount && (imp = imports[i]); i++) {
-        if (isImportLoaded(imp)) {
-          parsedCount++;
-          checkDone();
-        } else {
-          imp.addEventListener("load", loadedImport);
-          imp.addEventListener("error", errorLoadingImport);
-        }
-      }
-    } else {
-      checkDone();
-    }
-  }
-  function isImportLoaded(link) {
-    return useNative ? link.__loaded || link.import && link.import.readyState !== "loading" : link.__importParsed;
-  }
-  if (useNative) {
-    new MutationObserver(function(mxns) {
-      for (var i = 0, l = mxns.length, m; i < l && (m = mxns[i]); i++) {
-        if (m.addedNodes) {
-          handleImports(m.addedNodes);
-        }
-      }
-    }).observe(document.head, {
-      childList: true
-    });
-    function handleImports(nodes) {
-      for (var i = 0, l = nodes.length, n; i < l && (n = nodes[i]); i++) {
-        if (isImport(n)) {
-          handleImport(n);
-        }
-      }
-    }
-    function isImport(element) {
-      return element.localName === "link" && element.rel === "import";
-    }
-    function handleImport(element) {
-      var loaded = element.import;
-      if (loaded) {
-        markTargetLoaded({
-          target: element
-        });
-      } else {
-        element.addEventListener("load", markTargetLoaded);
-        element.addEventListener("error", markTargetLoaded);
-      }
-    }
-    (function() {
-      if (document.readyState === "loading") {
-        var imports = document.querySelectorAll("link[rel=import]");
-        for (var i = 0, l = imports.length, imp; i < l && (imp = imports[i]); i++) {
-          handleImport(imp);
-        }
-      }
-    })();
-  }
-  whenReady(function(detail) {
-    window.HTMLImports.ready = true;
-    window.HTMLImports.readyTime = new Date().getTime();
-    var evt = rootDocument.createEvent("CustomEvent");
-    evt.initCustomEvent("HTMLImportsLoaded", true, true, detail);
-    rootDocument.dispatchEvent(evt);
-  });
-  scope.IMPORT_LINK_TYPE = IMPORT_LINK_TYPE;
-  scope.useNative = useNative;
-  scope.rootDocument = rootDocument;
-  scope.whenReady = whenReady;
-  scope.isIE = isIE;
-})(window.HTMLImports);
-
-(function(scope) {
-  var modules = [];
-  var addModule = function(module) {
-    modules.push(module);
-  };
-  var initializeModules = function() {
-    modules.forEach(function(module) {
-      module(scope);
-    });
-  };
-  scope.addModule = addModule;
-  scope.initializeModules = initializeModules;
-})(window.HTMLImports);
-
-window.HTMLImports.addModule(function(scope) {
-  var CSS_URL_REGEXP = /(url\()([^)]*)(\))/g;
-  var CSS_IMPORT_REGEXP = /(@import[\s]+(?!url\())([^;]*)(;)/g;
-  var path = {
-    resolveUrlsInStyle: function(style, linkUrl) {
-      var doc = style.ownerDocument;
-      var resolver = doc.createElement("a");
-      style.textContent = this.resolveUrlsInCssText(style.textContent, linkUrl, resolver);
-      return style;
-    },
-    resolveUrlsInCssText: function(cssText, linkUrl, urlObj) {
-      var r = this.replaceUrls(cssText, urlObj, linkUrl, CSS_URL_REGEXP);
-      r = this.replaceUrls(r, urlObj, linkUrl, CSS_IMPORT_REGEXP);
-      return r;
-    },
-    replaceUrls: function(text, urlObj, linkUrl, regexp) {
-      return text.replace(regexp, function(m, pre, url, post) {
-        var urlPath = url.replace(/["']/g, "");
-        if (linkUrl) {
-          urlPath = new URL(urlPath, linkUrl).href;
-        }
-        urlObj.href = urlPath;
-        urlPath = urlObj.href;
-        return pre + "'" + urlPath + "'" + post;
-      });
-    }
-  };
-  scope.path = path;
-});
-
-window.HTMLImports.addModule(function(scope) {
-  var xhr = {
-    async: true,
-    ok: function(request) {
-      return request.status >= 200 && request.status < 300 || request.status === 304 || request.status === 0;
-    },
-    load: function(url, next, nextContext) {
-      var request = new XMLHttpRequest();
-      if (scope.flags.debug || scope.flags.bust) {
-        url += "?" + Math.random();
-      }
-      request.open("GET", url, xhr.async);
-      request.addEventListener("readystatechange", function(e) {
-        if (request.readyState === 4) {
-          var locationHeader = request.getResponseHeader("Location");
-          var redirectedUrl = null;
-          if (locationHeader) {
-            var redirectedUrl = locationHeader.substr(0, 1) === "/" ? location.origin + locationHeader : locationHeader;
-          }
-          next.call(nextContext, !xhr.ok(request) && request, request.response || request.responseText, redirectedUrl);
-        }
-      });
-      request.send();
-      return request;
-    },
-    loadDocument: function(url, next, nextContext) {
-      this.load(url, next, nextContext).responseType = "document";
-    }
-  };
-  scope.xhr = xhr;
-});
-
-window.HTMLImports.addModule(function(scope) {
-  var xhr = scope.xhr;
-  var flags = scope.flags;
-  var Loader = function(onLoad, onComplete) {
-    this.cache = {};
-    this.onload = onLoad;
-    this.oncomplete = onComplete;
-    this.inflight = 0;
-    this.pending = {};
-  };
-  Loader.prototype = {
-    addNodes: function(nodes) {
-      this.inflight += nodes.length;
-      for (var i = 0, l = nodes.length, n; i < l && (n = nodes[i]); i++) {
-        this.require(n);
-      }
-      this.checkDone();
-    },
-    addNode: function(node) {
-      this.inflight++;
-      this.require(node);
-      this.checkDone();
-    },
-    require: function(elt) {
-      var url = elt.src || elt.href;
-      elt.__nodeUrl = url;
-      if (!this.dedupe(url, elt)) {
-        this.fetch(url, elt);
-      }
-    },
-    dedupe: function(url, elt) {
-      if (this.pending[url]) {
-        this.pending[url].push(elt);
-        return true;
-      }
-      var resource;
-      if (this.cache[url]) {
-        this.onload(url, elt, this.cache[url]);
-        this.tail();
-        return true;
-      }
-      this.pending[url] = [ elt ];
-      return false;
-    },
-    fetch: function(url, elt) {
-      flags.load && console.log("fetch", url, elt);
-      if (!url) {
-        setTimeout(function() {
-          this.receive(url, elt, {
-            error: "href must be specified"
-          }, null);
-        }.bind(this), 0);
-      } else if (url.match(/^data:/)) {
-        var pieces = url.split(",");
-        var header = pieces[0];
-        var body = pieces[1];
-        if (header.indexOf(";base64") > -1) {
-          body = atob(body);
-        } else {
-          body = decodeURIComponent(body);
-        }
-        setTimeout(function() {
-          this.receive(url, elt, null, body);
-        }.bind(this), 0);
-      } else {
-        var receiveXhr = function(err, resource, redirectedUrl) {
-          this.receive(url, elt, err, resource, redirectedUrl);
-        }.bind(this);
-        xhr.load(url, receiveXhr);
-      }
-    },
-    receive: function(url, elt, err, resource, redirectedUrl) {
-      this.cache[url] = resource;
-      var $p = this.pending[url];
-      for (var i = 0, l = $p.length, p; i < l && (p = $p[i]); i++) {
-        this.onload(url, p, resource, err, redirectedUrl);
-        this.tail();
-      }
-      this.pending[url] = null;
-    },
-    tail: function() {
-      --this.inflight;
-      this.checkDone();
-    },
-    checkDone: function() {
-      if (!this.inflight) {
-        this.oncomplete();
-      }
-    }
-  };
-  scope.Loader = Loader;
-});
-
-window.HTMLImports.addModule(function(scope) {
-  var Observer = function(addCallback) {
-    this.addCallback = addCallback;
-    this.mo = new MutationObserver(this.handler.bind(this));
-  };
-  Observer.prototype = {
-    handler: function(mutations) {
-      for (var i = 0, l = mutations.length, m; i < l && (m = mutations[i]); i++) {
-        if (m.type === "childList" && m.addedNodes.length) {
-          this.addedNodes(m.addedNodes);
-        }
-      }
-    },
-    addedNodes: function(nodes) {
-      if (this.addCallback) {
-        this.addCallback(nodes);
-      }
-      for (var i = 0, l = nodes.length, n, loading; i < l && (n = nodes[i]); i++) {
-        if (n.children && n.children.length) {
-          this.addedNodes(n.children);
-        }
-      }
-    },
-    observe: function(root) {
-      this.mo.observe(root, {
-        childList: true,
-        subtree: true
-      });
-    }
-  };
-  scope.Observer = Observer;
-});
-
-window.HTMLImports.addModule(function(scope) {
-  var path = scope.path;
-  var rootDocument = scope.rootDocument;
-  var flags = scope.flags;
-  var isIE = scope.isIE;
-  var IMPORT_LINK_TYPE = scope.IMPORT_LINK_TYPE;
-  var IMPORT_SELECTOR = "link[rel=" + IMPORT_LINK_TYPE + "]";
-  var importParser = {
-    documentSelectors: IMPORT_SELECTOR,
-    importsSelectors: [ IMPORT_SELECTOR, "link[rel=stylesheet]:not([type])", "style:not([type])", "script:not([type])", 'script[type="application/javascript"]', 'script[type="text/javascript"]' ].join(","),
-    map: {
-      link: "parseLink",
-      script: "parseScript",
-      style: "parseStyle"
-    },
-    dynamicElements: [],
-    parseNext: function() {
-      var next = this.nextToParse();
-      if (next) {
-        this.parse(next);
-      }
-    },
-    parse: function(elt) {
-      if (this.isParsed(elt)) {
-        flags.parse && console.log("[%s] is already parsed", elt.localName);
-        return;
-      }
-      var fn = this[this.map[elt.localName]];
-      if (fn) {
-        this.markParsing(elt);
-        fn.call(this, elt);
-      }
-    },
-    parseDynamic: function(elt, quiet) {
-      this.dynamicElements.push(elt);
-      if (!quiet) {
-        this.parseNext();
-      }
-    },
-    markParsing: function(elt) {
-      flags.parse && console.log("parsing", elt);
-      this.parsingElement = elt;
-    },
-    markParsingComplete: function(elt) {
-      elt.__importParsed = true;
-      this.markDynamicParsingComplete(elt);
-      if (elt.__importElement) {
-        elt.__importElement.__importParsed = true;
-        this.markDynamicParsingComplete(elt.__importElement);
-      }
-      this.parsingElement = null;
-      flags.parse && console.log("completed", elt);
-    },
-    markDynamicParsingComplete: function(elt) {
-      var i = this.dynamicElements.indexOf(elt);
-      if (i >= 0) {
-        this.dynamicElements.splice(i, 1);
-      }
-    },
-    parseImport: function(elt) {
-      elt.import = elt.__doc;
-      if (window.HTMLImports.__importsParsingHook) {
-        window.HTMLImports.__importsParsingHook(elt);
-      }
-      if (elt.import) {
-        elt.import.__importParsed = true;
-      }
-      this.markParsingComplete(elt);
-      if (elt.__resource && !elt.__error) {
-        elt.dispatchEvent(new CustomEvent("load", {
-          bubbles: false
-        }));
-      } else {
-        elt.dispatchEvent(new CustomEvent("error", {
-          bubbles: false
-        }));
-      }
-      if (elt.__pending) {
-        var fn;
-        while (elt.__pending.length) {
-          fn = elt.__pending.shift();
-          if (fn) {
-            fn({
-              target: elt
-            });
-          }
-        }
-      }
-      this.parseNext();
-    },
-    parseLink: function(linkElt) {
-      if (nodeIsImport(linkElt)) {
-        this.parseImport(linkElt);
-      } else {
-        linkElt.href = linkElt.href;
-        this.parseGeneric(linkElt);
-      }
-    },
-    parseStyle: function(elt) {
-      var src = elt;
-      elt = cloneStyle(elt);
-      src.__appliedElement = elt;
-      elt.__importElement = src;
-      this.parseGeneric(elt);
-    },
-    parseGeneric: function(elt) {
-      this.trackElement(elt);
-      this.addElementToDocument(elt);
-    },
-    rootImportForElement: function(elt) {
-      var n = elt;
-      while (n.ownerDocument.__importLink) {
-        n = n.ownerDocument.__importLink;
-      }
-      return n;
-    },
-    addElementToDocument: function(elt) {
-      var port = this.rootImportForElement(elt.__importElement || elt);
-      port.parentNode.insertBefore(elt, port);
-    },
-    trackElement: function(elt, callback) {
-      var self = this;
-      var done = function(e) {
-        elt.removeEventListener("load", done);
-        elt.removeEventListener("error", done);
-        if (callback) {
-          callback(e);
-        }
-        self.markParsingComplete(elt);
-        self.parseNext();
-      };
-      elt.addEventListener("load", done);
-      elt.addEventListener("error", done);
-      if (isIE && elt.localName === "style") {
-        var fakeLoad = false;
-        if (elt.textContent.indexOf("@import") == -1) {
-          fakeLoad = true;
-        } else if (elt.sheet) {
-          fakeLoad = true;
-          var csr = elt.sheet.cssRules;
-          var len = csr ? csr.length : 0;
-          for (var i = 0, r; i < len && (r = csr[i]); i++) {
-            if (r.type === CSSRule.IMPORT_RULE) {
-              fakeLoad = fakeLoad && Boolean(r.styleSheet);
-            }
-          }
-        }
-        if (fakeLoad) {
-          setTimeout(function() {
-            elt.dispatchEvent(new CustomEvent("load", {
-              bubbles: false
-            }));
-          });
-        }
-      }
-    },
-    parseScript: function(scriptElt) {
-      var script = document.createElement("script");
-      script.__importElement = scriptElt;
-      script.src = scriptElt.src ? scriptElt.src : generateScriptDataUrl(scriptElt);
-      scope.currentScript = scriptElt;
-      this.trackElement(script, function(e) {
-        if (script.parentNode) {
-          script.parentNode.removeChild(script);
-        }
-        scope.currentScript = null;
-      });
-      this.addElementToDocument(script);
-    },
-    nextToParse: function() {
-      this._mayParse = [];
-      return !this.parsingElement && (this.nextToParseInDoc(rootDocument) || this.nextToParseDynamic());
-    },
-    nextToParseInDoc: function(doc, link) {
-      if (doc && this._mayParse.indexOf(doc) < 0) {
-        this._mayParse.push(doc);
-        var nodes = doc.querySelectorAll(this.parseSelectorsForNode(doc));
-        for (var i = 0, l = nodes.length, p = 0, n; i < l && (n = nodes[i]); i++) {
-          if (!this.isParsed(n)) {
-            if (this.hasResource(n)) {
-              return nodeIsImport(n) ? this.nextToParseInDoc(n.__doc, n) : n;
-            } else {
-              return;
-            }
-          }
-        }
-      }
-      return link;
-    },
-    nextToParseDynamic: function() {
-      return this.dynamicElements[0];
-    },
-    parseSelectorsForNode: function(node) {
-      var doc = node.ownerDocument || node;
-      return doc === rootDocument ? this.documentSelectors : this.importsSelectors;
-    },
-    isParsed: function(node) {
-      return node.__importParsed;
-    },
-    needsDynamicParsing: function(elt) {
-      return this.dynamicElements.indexOf(elt) >= 0;
-    },
-    hasResource: function(node) {
-      if (nodeIsImport(node) && node.__doc === undefined) {
-        return false;
-      }
-      return true;
-    }
-  };
-  function nodeIsImport(elt) {
-    return elt.localName === "link" && elt.rel === IMPORT_LINK_TYPE;
-  }
-  function generateScriptDataUrl(script) {
-    var scriptContent = generateScriptContent(script);
-    return "data:text/javascript;charset=utf-8," + encodeURIComponent(scriptContent);
-  }
-  function generateScriptContent(script) {
-    return script.textContent + generateSourceMapHint(script);
-  }
-  function generateSourceMapHint(script) {
-    var owner = script.ownerDocument;
-    owner.__importedScripts = owner.__importedScripts || 0;
-    var moniker = script.ownerDocument.baseURI;
-    var num = owner.__importedScripts ? "-" + owner.__importedScripts : "";
-    owner.__importedScripts++;
-    return "\n//# sourceURL=" + moniker + num + ".js\n";
-  }
-  function cloneStyle(style) {
-    var clone = style.ownerDocument.createElement("style");
-    clone.textContent = style.textContent;
-    path.resolveUrlsInStyle(clone);
-    return clone;
-  }
-  scope.parser = importParser;
-  scope.IMPORT_SELECTOR = IMPORT_SELECTOR;
-});
-
-window.HTMLImports.addModule(function(scope) {
-  var flags = scope.flags;
-  var IMPORT_LINK_TYPE = scope.IMPORT_LINK_TYPE;
-  var IMPORT_SELECTOR = scope.IMPORT_SELECTOR;
-  var rootDocument = scope.rootDocument;
-  var Loader = scope.Loader;
-  var Observer = scope.Observer;
-  var parser = scope.parser;
-  var importer = {
-    documents: {},
-    documentPreloadSelectors: IMPORT_SELECTOR,
-    importsPreloadSelectors: [ IMPORT_SELECTOR ].join(","),
-    loadNode: function(node) {
-      importLoader.addNode(node);
-    },
-    loadSubtree: function(parent) {
-      var nodes = this.marshalNodes(parent);
-      importLoader.addNodes(nodes);
-    },
-    marshalNodes: function(parent) {
-      return parent.querySelectorAll(this.loadSelectorsForNode(parent));
-    },
-    loadSelectorsForNode: function(node) {
-      var doc = node.ownerDocument || node;
-      return doc === rootDocument ? this.documentPreloadSelectors : this.importsPreloadSelectors;
-    },
-    loaded: function(url, elt, resource, err, redirectedUrl) {
-      flags.load && console.log("loaded", url, elt);
-      elt.__resource = resource;
-      elt.__error = err;
-      if (isImportLink(elt)) {
-        var doc = this.documents[url];
-        if (doc === undefined) {
-          doc = err ? null : makeDocument(resource, redirectedUrl || url);
-          if (doc) {
-            doc.__importLink = elt;
-            this.bootDocument(doc);
-          }
-          this.documents[url] = doc;
-        }
-        elt.__doc = doc;
-      }
-      parser.parseNext();
-    },
-    bootDocument: function(doc) {
-      this.loadSubtree(doc);
-      this.observer.observe(doc);
-      parser.parseNext();
-    },
-    loadedAll: function() {
-      parser.parseNext();
-    }
-  };
-  var importLoader = new Loader(importer.loaded.bind(importer), importer.loadedAll.bind(importer));
-  importer.observer = new Observer();
-  function isImportLink(elt) {
-    return isLinkRel(elt, IMPORT_LINK_TYPE);
-  }
-  function isLinkRel(elt, rel) {
-    return elt.localName === "link" && elt.getAttribute("rel") === rel;
-  }
-  function hasBaseURIAccessor(doc) {
-    return !!Object.getOwnPropertyDescriptor(doc, "baseURI");
-  }
-  function makeDocument(resource, url) {
-    var doc = document.implementation.createHTMLDocument(IMPORT_LINK_TYPE);
-    doc._URL = url;
-    var base = doc.createElement("base");
-    base.setAttribute("href", url);
-    if (!doc.baseURI && !hasBaseURIAccessor(doc)) {
-      Object.defineProperty(doc, "baseURI", {
-        value: url
-      });
-    }
-    var meta = doc.createElement("meta");
-    meta.setAttribute("charset", "utf-8");
-    doc.head.appendChild(meta);
-    doc.head.appendChild(base);
-    doc.body.innerHTML = resource;
-    if (window.HTMLTemplateElement && HTMLTemplateElement.bootstrap) {
-      HTMLTemplateElement.bootstrap(doc);
-    }
-    return doc;
-  }
-  if (!document.baseURI) {
-    var baseURIDescriptor = {
-      get: function() {
-        var base = document.querySelector("base");
-        return base ? base.href : window.location.href;
-      },
-      configurable: true
-    };
-    Object.defineProperty(document, "baseURI", baseURIDescriptor);
-    Object.defineProperty(rootDocument, "baseURI", baseURIDescriptor);
-  }
-  scope.importer = importer;
-  scope.importLoader = importLoader;
-});
-
-window.HTMLImports.addModule(function(scope) {
-  var parser = scope.parser;
-  var importer = scope.importer;
-  var dynamic = {
-    added: function(nodes) {
-      var owner, parsed, loading;
-      for (var i = 0, l = nodes.length, n; i < l && (n = nodes[i]); i++) {
-        if (!owner) {
-          owner = n.ownerDocument;
-          parsed = parser.isParsed(owner);
-        }
-        loading = this.shouldLoadNode(n);
-        if (loading) {
-          importer.loadNode(n);
-        }
-        if (this.shouldParseNode(n) && parsed) {
-          parser.parseDynamic(n, loading);
-        }
-      }
-    },
-    shouldLoadNode: function(node) {
-      return node.nodeType === 1 && matches.call(node, importer.loadSelectorsForNode(node));
-    },
-    shouldParseNode: function(node) {
-      return node.nodeType === 1 && matches.call(node, parser.parseSelectorsForNode(node));
-    }
-  };
-  importer.observer.addCallback = dynamic.added.bind(dynamic);
-  var matches = HTMLElement.prototype.matches || HTMLElement.prototype.matchesSelector || HTMLElement.prototype.webkitMatchesSelector || HTMLElement.prototype.mozMatchesSelector || HTMLElement.prototype.msMatchesSelector;
-});
-
-(function(scope) {
-  var initializeModules = scope.initializeModules;
-  var isIE = scope.isIE;
-  if (scope.useNative) {
-    return;
-  }
-  if (!window.CustomEvent || isIE && typeof window.CustomEvent !== "function") {
-    window.CustomEvent = function(inType, params) {
-      params = params || {};
-      var e = document.createEvent("CustomEvent");
-      e.initCustomEvent(inType, Boolean(params.bubbles), Boolean(params.cancelable), params.detail);
-      e.preventDefault = function() {
-        Object.defineProperty(this, "defaultPrevented", {
-          get: function() {
-            return true;
-          }
-        });
-      };
-      return e;
-    };
-    window.CustomEvent.prototype = window.Event.prototype;
-  }
-  initializeModules();
-  var rootDocument = scope.rootDocument;
-  function bootstrap() {
-    window.HTMLImports.importer.bootDocument(rootDocument);
-  }
-  if (document.readyState === "complete" || document.readyState === "interactive" && !window.attachEvent) {
-    bootstrap();
-  } else {
-    document.addEventListener("DOMContentLoaded", bootstrap);
-  }
-})(window.HTMLImports);
-},{}],36:[function(require,module,exports){
+},{"aframe":78,"aframe-core":39,"aframe-text-component":47}],2:[function(require,module,exports){
 var THREE = require('three-dev');
 
 // Allow cross-origin images to be loaded.
@@ -2492,7 +34,7 @@ THREE.VREffect = require('../lib/vendor/VREffect');
 
 module.exports = THREE;
 
-},{"../lib/vendor/ColladaLoader":37,"../lib/vendor/OBJLoader":38,"../lib/vendor/Raycaster":39,"../lib/vendor/VRControls":40,"../lib/vendor/VREffect":41,"three-dev":56}],37:[function(require,module,exports){
+},{"../lib/vendor/ColladaLoader":3,"../lib/vendor/OBJLoader":4,"../lib/vendor/Raycaster":5,"../lib/vendor/VRControls":6,"../lib/vendor/VREffect":7,"three-dev":93}],3:[function(require,module,exports){
 /**
 * @author Tim Knip / http://www.floorplanner.com/ / tim at floorplanner.com
 * @author Tony Parisi / http://www.tonyparisi.com/
@@ -8074,7 +5616,7 @@ module.exports = function (THREE) {
 
 };
 
-},{}],38:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 /**
  * @author mrdoob / http://mrdoob.com/
  */
@@ -8464,7 +6006,7 @@ module.exports = function (THREE) {
 
 }
 
-},{}],39:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 /**
  * @author mrdoob / http://mrdoob.com/
  * @author bhouston / http://exocortex.com/
@@ -8595,7 +6137,7 @@ module.exports = function (THREE) {
 
 };
 
-},{}],40:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 /**
  * @author dmarcos / https://github.com/dmarcos
  * @author mrdoob / http://mrdoob.com
@@ -8718,7 +6260,7 @@ module.exports = function ( object, onError ) {
 
 };
 
-},{"three-dev":56}],41:[function(require,module,exports){
+},{"three-dev":93}],7:[function(require,module,exports){
 /**
  * @author dmarcos / https://github.com/dmarcos
  * @author mrdoob / http://mrdoob.com
@@ -8967,7 +6509,7 @@ module.exports = function ( renderer, onError ) {
 
 };
 
-},{"three-dev":56}],42:[function(require,module,exports){
+},{"three-dev":93}],8:[function(require,module,exports){
 // performance.now() polyfill from https://gist.github.com/paulirish/5438650
 
 (function(){
@@ -9395,7 +6937,7 @@ var rStats = function rStats( settings ) {
 };
 
 if (typeof module !== "undefined") { module.exports = rStats; }
-},{}],43:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 /*
  * Copyright 2015 Google Inc. All Rights Reserved.
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -9457,7 +6999,7 @@ Util.isLandscapeMode = function() {
 
 module.exports = Util;
 
-},{}],44:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 /*
  * Copyright 2015 Google Inc. All Rights Reserved.
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -9533,7 +7075,7725 @@ function getWakeLock() {
 
 module.exports = getWakeLock();
 
-},{"./util.js":43}],45:[function(require,module,exports){
+},{"./util.js":9}],11:[function(require,module,exports){
+module.exports={
+  "_args": [
+    [
+      "aframe-core@^0.1.1",
+      "/Users/wli/code/webVR/node_modules/aframe"
+    ]
+  ],
+  "_from": "aframe-core@>=0.1.1 <0.2.0",
+  "_id": "aframe-core@0.1.3",
+  "_inCache": true,
+  "_installable": true,
+  "_location": "/aframe-core",
+  "_nodeVersion": "0.12.7",
+  "_npmUser": {
+    "email": "cvan@mozilla.com",
+    "name": "mozvr"
+  },
+  "_npmVersion": "2.12.1",
+  "_phantomChildren": {},
+  "_requested": {
+    "name": "aframe-core",
+    "raw": "aframe-core@^0.1.1",
+    "rawSpec": "^0.1.1",
+    "scope": null,
+    "spec": ">=0.1.1 <0.2.0",
+    "type": "range"
+  },
+  "_requiredBy": [
+    "/aframe"
+  ],
+  "_resolved": "https://registry.npmjs.org/aframe-core/-/aframe-core-0.1.3.tgz",
+  "_shasum": "f9f53f7f9abec6c0b1b79572229b7885ea83a49e",
+  "_shrinkwrap": null,
+  "_spec": "aframe-core@^0.1.1",
+  "_where": "/Users/wli/code/webVR/node_modules/aframe",
+  "browserify": {
+    "transform": [
+      "browserify-css"
+    ]
+  },
+  "browserify-css": {
+    "minify": true
+  },
+  "bugs": {
+    "url": "https://github.com/aframevr/aframe-core/issues"
+  },
+  "dependencies": {
+    "debug": "^2.2.0",
+    "document-register-element": "^0.5.2",
+    "es6-promise": "^3.0.2",
+    "object-assign": "^4.0.1",
+    "present": "0.0.6",
+    "request-interval": "^1.0.0",
+    "style-attr": "^1.0.1",
+    "three-dev": "0.74.0-beta3",
+    "tween.js": "^15.0.0",
+    "webvr-polyfill": "github:borismus/webvr-polyfill#3f47796"
+  },
+  "description": "A DOM-based [Entity-Component System](https://en.wikipedia.org/wiki/Entity_component_system) to declaratively create 3D and VR worlds in the browser.",
+  "devDependencies": {
+    "browserify": "^11.0.1",
+    "browserify-css": "^0.8.2",
+    "budo": "^7.0.2",
+    "chai-shallow-deep-equal": "^1.3.0",
+    "exorcist": "^0.4.0",
+    "gh-pages": "^0.4.0",
+    "husky": "^0.10.1",
+    "karma": "^0.13.15",
+    "karma-browserify": "^4.4.0",
+    "karma-chai-shallow-deep-equal": "0.0.4",
+    "karma-env-preprocessor": "^0.1.1",
+    "karma-firefox-launcher": "^0.1.6",
+    "karma-mocha": "^0.2.0",
+    "karma-mocha-reporter": "^1.1.0",
+    "karma-sinon-chai": "^1.1.0",
+    "mocha": "^2.3.3",
+    "mozilla-download": "^1.0.5",
+    "replace": "^0.3.0",
+    "semistandard": "^7.0.2",
+    "snazzy": "^2.0.1",
+    "uglifyjs": "^2.4.10"
+  },
+  "directories": {},
+  "dist": {
+    "shasum": "f9f53f7f9abec6c0b1b79572229b7885ea83a49e",
+    "tarball": "http://registry.npmjs.org/aframe-core/-/aframe-core-0.1.3.tgz"
+  },
+  "engines": {
+    "node": ">= 0.12.7",
+    "npm": ">= 2.12.1"
+  },
+  "gitHead": "66ba45b36d4168e4e21710a4401cb4e7139e6a16",
+  "homepage": "https://github.com/aframevr/aframe-core",
+  "license": "MIT",
+  "main": "src/index.js",
+  "maintainers": [
+    {
+      "name": "mozvr",
+      "email": "cvan@mozilla.com"
+    }
+  ],
+  "name": "aframe-core",
+  "optionalDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aframevr/aframe-core.git"
+  },
+  "scripts": {
+    "browserify": "browserify ./src/index.js -s 'aframe-core'",
+    "build": "mkdir -p build/ && npm run browserify -- --debug -o build/aframe-core.js",
+    "dev": "npm run build && budo src/index.js:build/aframe-core.js --debug --verbose --port 9001 --onupdate 'semistandard -v $(git ls-files \"*.js\") | snazzy' -- ./src/index.js -s 'aframe-core'",
+    "dist": "rm -rf dist/ && mkdir -p dist/ && npm run dist:js",
+    "dist:js": "npm run browserify -s -- --debug | exorcist dist/aframe-core.js.map > dist/aframe-core.js && uglifyjs dist/aframe-core.js -c warnings=false -m -o dist/aframe-core.min.js",
+    "gh-pages": "npm run ghpages",
+    "ghpages": "node ./scripts/gh-pages",
+    "lint": "semistandard -v $(git ls-files '*.js') | snazzy",
+    "precommit": "npm run lint",
+    "preghpages": "npm run dist && rm -rf gh-pages && mkdir -p gh-pages && cp -r {.nojekyll,dist,lib,examples,style,index.html} gh-pages/. && git checkout dist/ && replace 'build/aframe-core.js' 'dist/aframe-core.min.js' gh-pages/ -r --silent",
+    "release:bump": "npm run dist && git commit -am 'bump dist' && npm version patch --preminor",
+    "release:push": "npm login && npm publish && git push --follow-tags",
+    "start": "npm run dev",
+    "test": "karma start ./tests/karma.conf.js",
+    "test:ci": "TEST_ENV=ci karma start ./tests/karma.conf.js --single-run"
+  },
+  "semistandard": {
+    "ignore": [
+      "dist/**",
+      "examples/_js/**",
+      "lib/vendor/**",
+      "src/shaders/**"
+    ]
+  },
+  "version": "0.1.3"
+}
+
+},{}],12:[function(require,module,exports){
+var registerComponent = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+
+module.exports.Component = registerComponent('camera', {
+  schema: {
+    far: { default: 10000 },
+    fov: { default: 80, min: 0 },
+    near: { default: 0.5, min: 0 }
+  },
+
+  /**
+   * Initializes three.js camera, adding it to the entity.
+   * Adds a reference from the scene to this entity as the camera.
+   */
+  init: function () {
+    var camera = this.camera = new THREE.PerspectiveCamera();
+    var el = this.el;
+    el.object3D.add(camera);
+    el.sceneEl.cameraEl = el;
+  },
+
+  /**
+   * Updates three.js camera.
+   */
+  update: function () {
+    var data = this.data;
+    var camera = this.camera;
+    camera.aspect = data.aspect || (window.innerWidth / window.innerHeight);
+    camera.far = data.far;
+    camera.fov = data.fov;
+    camera.near = data.near;
+    camera.updateProjectionMatrix();
+  }
+});
+
+},{"../../lib/three":2,"../core/component":38}],13:[function(require,module,exports){
+var registerComponent = require('../core/component').registerComponent;
+var utils = require('../utils/');
+
+module.exports.Component = registerComponent('cursor', {
+  schema: {
+    timeout: { default: 1500, min: 0 },
+    maxDistance: { default: 5, min: 0 },
+    fuse: { default: false }
+  },
+
+  dependencies: [ 'raycaster' ],
+
+  init: function () {
+    this.raycaster = this.el.components.raycaster;
+    // The cursor defaults to fuse in mobile environments
+    this.schema.fuse.default = utils.isMobile();
+    this.attachEventListeners();
+  },
+
+  attachEventListeners: function () {
+    var el = this.el;
+    var canvas = el.sceneEl.canvas;
+
+    canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
+    canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
+
+    el.addEventListener('intersection', this.onIntersection.bind(this));
+    el.addEventListener('intersectioncleared', this.onIntersectionCleared.bind(this));
+  },
+
+  onMouseDown: function (evt) {
+    this.emit('mousedown');
+    this.mouseDownEl = this.intersectedEl;
+  },
+
+  onMouseUp: function () {
+    this.emit('mouseup');
+    if (this.data.fuse) { return; }
+    if (!this.intersectedEl) { return; }
+    if (this.mouseDownEl === this.intersectedEl) {
+      this.emit('click');
+    }
+  },
+
+  emit: function (evt) {
+    var intersectedEl = this.intersectedEl;
+    this.el.emit(evt);
+    if (intersectedEl) { intersectedEl.emit(evt); }
+  },
+
+  emitter: function (evt) {
+    return function () {
+      this.emit(evt);
+    }.bind(this);
+  },
+
+  onIntersection: function (evt) {
+    var self = this;
+    var data = this.data;
+    var el = evt.detail.el;
+    var distance = evt.detail.distance;
+    if (this.intersectedEl === el) { return; }
+    if (distance >= this.data.maxDistance) { return; }
+    this.intersectedEl = el;
+    el.addState('hovered');
+    el.emit('mouseenter');
+    this.el.addState('hovering');
+    if (data.timeout === 0) { return; }
+    if (!data.fuse) { return; }
+    this.el.addState('fusing');
+    this.fuseTimeout = setTimeout(fuse, data.timeout);
+    function fuse () {
+      self.el.removeState('fusing');
+      self.emit('click');
+    }
+  },
+
+  onIntersectionCleared: function (evt) {
+    var el = evt.detail.el;
+    if (!el || !this.intersectedEl) { return; }
+    this.intersectedEl = null;
+    el.removeState('hovered');
+    el.emit('mouseleave');
+    this.el.removeState('hovering');
+    this.el.removeState('fusing');
+    clearTimeout(this.fuseTimeout);
+  }
+});
+
+},{"../core/component":38,"../utils/":43}],14:[function(require,module,exports){
+var register = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+var debug = require('../utils/debug');
+
+var warn = debug('components:fog:warn');
+
+/**
+ * Fog component.
+ * Applies only to the scene entity.
+ */
+module.exports.Component = register('fog', {
+  schema: {
+    color: { default: '#000' },
+    density: { default: 0.00025 },
+    far: { default: 1000, min: 0 },
+    near: { default: 1, min: 0 },
+    type: { default: 'linear', oneOf: ['linear', 'exponential'] }
+  },
+
+  update: function () {
+    var data = this.data;
+    var el = this.el;
+    var fog = this.el.object3D.fog;
+
+    if (!el.isScene) {
+      warn('Fog component can only be applied to <a-scene>');
+      return;
+    }
+
+    // (Re)create fog if fog doesn't exist or fog type changed.
+    if (!fog || data.type !== fog.name) {
+      el.object3D.fog = getFog(data);
+      el.updateMaterials();
+      return;
+    }
+
+    // Fog data changed. Update fog.
+    Object.keys(this.schema).forEach(function (key) {
+      var value = data[key];
+      if (key === 'color') { value = new THREE.Color(value); }
+      fog[key] = value;
+    });
+  },
+
+  /**
+   * Remove fog on remove (callback).
+   */
+  remove: function () {
+    var fog = this.el.object3D.fog;
+    if (fog) {
+      fog.density = 0;
+      fog.far = 0;
+      fog.near = 0;
+    }
+  }
+});
+
+/**
+ * Creates a fog object. Sets fog.name to be able to detect fog type changes.
+ *
+ * @param {object} data - Fog data.
+ * @returns {object} fog
+ */
+function getFog (data) {
+  var fog;
+  if (data.type === 'exponential') {
+    fog = new THREE.FogExp2(data.color, data.density);
+  } else {
+    fog = new THREE.Fog(data.color, data.near, data.far);
+  }
+  fog.name = data.type;
+  return fog;
+}
+
+},{"../../lib/three":2,"../core/component":38,"../utils/debug":42}],15:[function(require,module,exports){
+var debug = require('../utils/debug');
+var registerComponent = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+var utils = require('../utils');
+
+var DEFAULT_RADIUS = 1;
+var helperMatrix = new THREE.Matrix4();
+var rad = THREE.Math.degToRad;
+var warn = debug('components:geometry:warn');
+
+/**
+ * Geometry component. Combined with material component to make a mesh in 3D object.
+ *
+ * @param {number} [arc=360] -
+ *   Used by torus. A central angle that determines arc length of the torus. In degrees.
+ * @param {number} [depth=2] - Used by box. Depth of the sides on the Z axis.
+ * @param {number} [height=2] -
+ *   Used by box, cylinder, plane. Height of the sides on the Y axis.
+ * @param {bool} [openEnded=false] - Used by cylinder.
+ * @param {number} [p=2] - Used by torusKnot. Coprime of q.
+ * @param {number} [primitive=null] - type of shape (e.g., box, sphere).
+ * @param {number} [q=3] - Used by torusKnot. Coprime of p.
+ * @param {number} [radius=1] - Used by circle, cylinder, ring, sphere, torus, torusKnot.
+ * @param {number} [radiusBottom=1] - Used by cylinder.
+ * @param {number} [radiusInner=0.8] - Used by ring.
+ * @param {number} [radiusOuter=1.2] - Used by ring.
+ * @param {number} [radiusTop=1] - Used by cylinder.
+ * @param {number} [radiusTube=0.2] - Used by torus. Tube radius.
+ * @param {number} [scaleHeight=1] - Used by torusKnot.
+ * @param {number} [segments=8] - Used by circle. Number of segments.
+ * @param {number} [segmentsHeight=18] - Used by cylinder, sphere. Number of segments.
+ * @param {number} [segmentsPhi=8] - Used by ring.
+ * @param {number} [segmentsRadial=36] - Used by cylinder. Number of segments.
+ * @param {number} [segmentsTheta=8] -
+ *   Used by ring. Number of segments. A higher number means the ring will be more round.
+ *   Minimum is 3.
+ * @param {number} [segmentsTubular=8] - Used by torus, torusKnot. Number of segments.
+ * @param {number} [segmentsWidth=36] - Used by sphere.
+ * @param {number} [thetaLength=360] - Used by circle, cylinder, ring. In degrees.
+ * @param {number} [thetaStart=0] - Used by circle, cylinder, ring. In degrees.
+ * @param {string} translate -
+ *   Defined as a coordinate (e.g., `-1 0 5`) that translates geometry vertices. Useful for
+ *   effectively changing the pivot point.
+ * @param {number} [width=2] - Used by box, plane.
+ */
+module.exports.Component = registerComponent('geometry', {
+  schema: {
+    arc: { default: 360, if: { primitive: ['torus'] } },
+    depth: { default: 2, min: 0, if: { primitive: ['box'] } },
+    height: { default: 2, min: 0, if: { primitive: ['box', 'plane'] } },
+    openEnded: { default: false, if: { primitive: ['cylinder'] } },
+    p: { default: 2, if: { primitive: ['torusKnot'] } },
+    translate: { default: { x: 0, y: 0, z: 0 } },
+    primitive: {
+      default: '',
+      oneOf: ['', 'box', 'circle', 'cylinder', 'plane',
+              'ring', 'sphere', 'torus', 'torusKnot'] },
+    q: { default: 3, if: { primitive: ['torusKnot'] } },
+    radius: { default: DEFAULT_RADIUS, min: 0, if: { primitive: ['circle', 'cylinder', 'sphere', 'torus', 'torusKnot'] } },
+    radiusBottom: { default: DEFAULT_RADIUS, min: 0, if: { primitive: ['cylinder'] } },
+    radiusInner: { default: 0.8, min: 0, if: { primitive: ['ring'] } },
+    radiusOuter: { default: 1.2, min: 0, if: { primitive: ['ring'] } },
+    radiusTop: { default: DEFAULT_RADIUS, if: { primitive: ['cylinder'] } },
+    radiusTubular: { default: 0.2, min: 0, if: { primitive: ['torus'] } },
+    scaleHeight: { default: 1, min: 0, if: { primitive: ['torusKnot'] } },
+    segments: { default: 8, min: 0, if: { primitive: ['circle'] } },
+    segmentsHeight: { default: 18, min: 0, if: { primitive: ['cylinder', 'sphere'] } },
+    segmentsPhi: { default: 8, min: 0, if: { primitive: ['ring'] } },
+    segmentsRadial: { default: 36, min: 0, if: { primitive: ['cylinder'] } },
+    segmentsTheta: { default: 8, min: 0, if: { primitive: ['ring'] } },
+    segmentsTubular: { default: 8, min: 0, if: { primitive: ['torus', 'torusKnot'] } },
+    segmentsWidth: { default: 36, min: 0, if: { primitive: ['sphere'] } },
+    thetaLength: { default: 360, min: 0, if: { primitive: ['circle', 'cylinder', 'ring'] } },
+    thetaStart: { default: 0, if: { primitive: ['circle', 'cylinder', 'ring'] } },
+    width: { default: 2, min: 0, if: { primitive: ['box', 'plane'] } }
+  },
+
+  /**
+   * Creates a new geometry on every update as there's not an easy way to
+   * update a geometry that would be faster than just creating a new one.
+   */
+  update: function (previousData) {
+    previousData = previousData || {};
+    var data = this.data;
+    var currentTranslate = previousData.translate || this.schema.translate.default;
+    var diff = utils.diff(previousData, data);
+    var geometry = this.el.object3D.geometry;
+    var geometryNeedsUpdate = !(Object.keys(diff).length === 1 && 'translate' in diff);
+    var translateNeedsUpdate = !utils.deepEqual(data.translate, currentTranslate);
+
+    if (geometryNeedsUpdate) {
+      geometry = this.el.object3D.geometry = getGeometry(this.data, this.schema);
+    }
+    if (translateNeedsUpdate) {
+      applyTranslate(geometry, data.translate, currentTranslate);
+    }
+  },
+
+  /**
+   * Removes geometry on remove (callback).
+   */
+  remove: function () {
+    this.el.object3D.geometry = new THREE.Geometry();
+  }
+});
+
+/**
+ * Creates a three.js geometry.
+ *
+ * @param {object} data
+ * @param {object} schema
+ * @returns {object} geometry
+ */
+function getGeometry (data, schema) {
+  switch (data.primitive) {
+    case 'box': {
+      return new THREE.BoxGeometry(data.width, data.height, data.depth);
+    }
+    case 'circle': {
+      return new THREE.CircleGeometry(
+        data.radius, data.segments, rad(data.thetaStart), rad(data.thetaLength));
+    }
+    case 'cone': {
+      return new THREE.CylinderGeometry(
+        data.radiusTop, data.radiusBottom, data.height,
+        data.segmentsRadial, data.segmentsHeight,
+        data.openEnded, rad(data.thetaStart), rad(data.thetaLength));
+    }
+    case 'cylinder': {
+      return new THREE.CylinderGeometry(
+        data.radius, data.radius, data.height,
+        data.segmentsRadial, data.segmentsHeight,
+        data.openEnded, rad(data.thetaStart), rad(data.thetaLength));
+    }
+    case 'plane': {
+      return new THREE.PlaneBufferGeometry(data.width, data.height);
+    }
+    case 'ring': {
+      return new THREE.RingGeometry(
+        data.radiusInner, data.radiusOuter, data.segmentsTheta, data.segmentsPhi,
+        rad(data.thetaStart), rad(data.thetaLength));
+    }
+    case 'sphere': {
+      return new THREE.SphereGeometry(
+        data.radius, data.segmentsWidth, data.segmentsHeight);
+    }
+    case 'torus': {
+      return new THREE.TorusGeometry(
+        data.radius, data.radiusTubular * 2, data.segmentsRadial, data.segmentsTubular,
+        rad(data.arc));
+    }
+    case 'torusKnot': {
+      return new THREE.TorusKnotGeometry(
+        data.radius, data.radiusTubular * 2, data.segmentsRadial, data.segmentsTubular,
+        data.p, data.q, data.scaleHeight);
+    }
+    default: {
+      warn('Primitive type not supported: ' + data.primitive);
+      return new THREE.Geometry();
+    }
+  }
+}
+
+/**
+ * Translates geometry vertices.
+ *
+ * @param {object} geometry - three.js geometry.
+ * @param {object} translate - New translation.
+ * @param {object} currentTranslate - Currently applied translation.
+ */
+function applyTranslate (geometry, translate, currentTranslate) {
+  var translation = helperMatrix.makeTranslation(
+    translate.x - currentTranslate.x,
+    translate.y - currentTranslate.y,
+    translate.z - currentTranslate.z
+  );
+  geometry.applyMatrix(translation);
+  geometry.verticesNeedsUpdate = true;
+}
+
+},{"../../lib/three":2,"../core/component":38,"../utils":43,"../utils/debug":42}],16:[function(require,module,exports){
+require('../components/camera');
+require('../components/cursor');
+require('../components/fog');
+require('../components/geometry');
+require('../components/light');
+require('../components/loader');
+require('../components/look-at');
+require('../components/look-controls');
+require('../components/material');
+require('../components/position');
+require('../components/raycaster');
+require('../components/rotation');
+require('../components/scale');
+require('../components/sound');
+require('../components/visible');
+require('../components/wasd-controls');
+
+},{"../components/camera":12,"../components/cursor":13,"../components/fog":14,"../components/geometry":15,"../components/light":17,"../components/loader":18,"../components/look-at":19,"../components/look-controls":20,"../components/material":21,"../components/position":22,"../components/raycaster":23,"../components/rotation":24,"../components/scale":25,"../components/sound":26,"../components/visible":27,"../components/wasd-controls":28}],17:[function(require,module,exports){
+var diff = require('../utils').diff;
+var debug = require('../utils/debug');
+var registerComponent = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+
+var rad = THREE.Math.degToRad;
+var warn = debug('components:light:warn');
+
+/**
+ * Light component.
+ *
+ * @namespace light
+ * @param {number} [angle=60] - maximum extent of light from its direction,
+          in degrees. For spot lights.
+ * @param {string} [color=#FFF] - light color. For every light.
+ * @param {number} [decay=1] - amount the light dims along the distance of the
+          light. For point and spot lights.
+ * @param {number} [exponent=10.0] - rapidity of falloff of light from its
+          target direction. For spot lights.
+ * @param {string} [groundColor=#FFF] - ground light color. For hemisphere
+          lights.
+ * @param {number} [intensity=1.0] - light strength. For every light except
+          ambient.
+ * @param {string} [type=directional] - light type (ambient, directional,
+          hemisphere, point, spot).
+ */
+module.exports.Component = registerComponent('light', {
+  schema: {
+    angle: { default: 60, if: { type: ['spot'] } },
+    color: { default: '#FFF' },
+    groundColor: { default: '#FFF', if: { type: ['hemisphere'] } },
+    decay: { default: 1, if: { type: ['point', 'spot'] } },
+    distance: { default: 0.0, min: 0, if: { type: ['point', 'spot'] } },
+    exponent: { default: 10.0, if: { type: ['spot'] } },
+    intensity: { default: 1.0, min: 0, if: { type: ['directional', 'hemisphere', 'point', 'spot'] } },
+    type: { default: 'directional',
+            oneOf: ['ambient', 'directional', 'hemisphere', 'point', 'spot']
+    }
+  },
+
+  /**
+   * Notifies scene a light has been added to remove default lighting.
+   */
+  init: function () {
+    var el = this.el;
+    this.light = null;
+    el.sceneEl.registerLight(el);
+  },
+
+  /**
+   * (Re)create or update light.
+   */
+  update: function (oldData) {
+    var data = this.data;
+    var diffData = diff(data, oldData || {});
+    var el = this.el;
+    var light = this.light;
+
+    // Existing light.
+    if (light) {
+      // Light type has changed. Recreate light.
+      if ('type' in diffData) {
+        var newLight = getLight(data);
+        if (newLight) {
+          el.object3D.remove(light);
+          el.object3D.add(newLight);
+          this.light = newLight;
+        }
+        return;
+      }
+      // Light type has not changed. Update light.
+      Object.keys(diffData).forEach(function (key) {
+        var value = data[key];
+        if (['color', 'groundColor'].indexOf(key) !== -1) {
+          value = new THREE.Color(value);
+        }
+        light[key] = value;
+      });
+      return;
+    }
+
+    // No light yet. Create and add light.
+    this.light = getLight(data);
+    if (this.light) {
+      el.object3D.add(this.light);
+    }
+  },
+
+  /**
+   * Remove light on remove (callback).
+   */
+  remove: function () {
+    if (this.light) { this.el.object3D.remove(this.light); }
+  }
+});
+
+/**
+ * Creates a new three.js light object given data object defining the light.
+ *
+ * @param {object} data
+ */
+function getLight (data) {
+  var angle = data.angle;
+  var color = new THREE.Color(data.color).getHex();
+  var decay = data.decay;
+  var distance = data.distance;
+  var groundColor = new THREE.Color(data.groundColor).getHex();
+  var intensity = data.intensity;
+  var type = data.type;
+
+  switch (type.toLowerCase()) {
+    case 'ambient': {
+      return new THREE.AmbientLight(color);
+    }
+    case 'directional': {
+      return new THREE.DirectionalLight(color, intensity);
+    }
+    case 'hemisphere': {
+      return new THREE.HemisphereLight(color, groundColor, intensity);
+    }
+    case 'point': {
+      return new THREE.PointLight(color, intensity, distance, decay);
+    }
+    case 'spot': {
+      return new THREE.SpotLight(color, intensity, distance, rad(angle), data.exponent,
+                                 decay);
+    }
+    default: {
+      warn('%s is not a valid light type. ' +
+           'Choose from ambient, directional, hemisphere, point, spot.', type);
+    }
+  }
+}
+
+},{"../../lib/three":2,"../core/component":38,"../utils":43,"../utils/debug":42}],18:[function(require,module,exports){
+var debug = require('../utils/debug');
+var registerComponent = require('../core/component').registerComponent;
+var parseUrl = require('../utils/src-loader').parseUrl;
+var THREE = require('../../lib/three');
+
+var warn = debug('components:loader:warn');
+
+module.exports.Component = registerComponent('loader', {
+  dependencies: [ 'material' ],
+
+  schema: {
+    src: { default: '' },
+    format: {
+      default: 'obj',
+      oneOf: ['obj', 'collada']
+    }
+  },
+
+  update: function () {
+    var el = this.el;
+    var data = this.data;
+    var model = this.model;
+    var url = parseUrl(data.src);
+    var format = data.format;
+    if (model) { el.object3D.remove(model); }
+    if (!url) {
+      warn('Model URL not provided');
+      return;
+    }
+    switch (format) {
+      case 'obj':
+        this.loadObj(url);
+        break;
+      case 'collada':
+        this.loadCollada(url);
+        break;
+      default:
+        warn('Model format not supported');
+    }
+  },
+
+  loadObj: function (url) {
+    var self = this;
+    var el = this.el;
+    var loader = new THREE.OBJLoader();
+    loader.load(url, function (object) {
+      self.model = object;
+      self.applyMaterial();
+      el.object3D.add(object);
+    });
+  },
+
+  applyMaterial: function () {
+    var material = this.el.components.material.material;
+    if (!this.model) { return; }
+    this.model.traverse(function (child) {
+      if (child instanceof THREE.Mesh) {
+        child.material = material;
+      }
+    });
+  },
+
+  loadCollada: function (url) {
+    var self = this;
+    var el = this.el;
+    var loader = new THREE.ColladaLoader();
+    loader.options.convertUpAxis = true;
+    loader.load(url, function (collada) {
+      self.model = collada.scene;
+      el.object3D.add(collada.scene);
+    });
+  }
+});
+
+},{"../../lib/three":2,"../core/component":38,"../utils/debug":42,"../utils/src-loader":44}],19:[function(require,module,exports){
+var debug = require('../utils/debug');
+var coordinates = require('../utils/coordinates');
+var registerComponent = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+
+var warn = debug('components:look-at:warn');
+var isCoordinate = coordinates.isCoordinate;
+
+/**
+ * Look-at component.
+ * Modifies rotation to either track another entity OR do a one-time turn towards a position
+ * vector.
+ *
+ * If tracking an object via setting the component value via a selector, look-at will register
+ * a behavior to the scene to update rotation on every tick.
+ *
+ * Examples:
+ *
+ * look-at="#the-mirror"
+ * look-at="0 5 -2"
+ *
+ * @param Look-at either takes a target selector pointing to another object or a
+ *        position.
+ * @member {object} target3D - object3D of targeted element that look-at is currently
+           tracking.
+ * @member {object} vector - Helper vector to do matrix transformations.
+ */
+module.exports.Component = registerComponent('look-at', {
+  init: function () {
+    this.target3D = null;
+    this.vector = new THREE.Vector3();
+  },
+
+  /**
+   * If tracking an object, this will be called on every tick.
+   * If looking at a position vector, this will only be called once (until further updates).
+   */
+  update: function () {
+    var self = this;
+    var data = self.data;
+    var position = data.position;
+    var object3D = self.el.object3D;
+    var target3D = self.target3D;
+    var targetEl;
+    var targetSelector = data.targetSelector;
+
+    // Track target object position. Depends on parent object keeping global transforms up
+    // to state with updateMatrixWorld(). In practice, this is handled by the renderer.
+    if (target3D) {
+      return object3D.lookAt(self.vector.setFromMatrixPosition(target3D.matrixWorld));
+    }
+
+    // Query for the element, grab its object3D, then register a behavior on the scene to
+    // track the target on every tick.
+    if (targetSelector) {
+      targetEl = document.querySelector(targetSelector);
+      if (!targetEl) {
+        warn('"' + targetSelector + '" does not point to a valid entity to look-at');
+        return;
+      }
+      if (!targetEl.object3D) {
+        return targetEl.addEventListener('loaded', function () {
+          self.beginTracking(targetEl);
+        });
+      }
+      return self.beginTracking(targetEl);
+    }
+
+    // Look at a position.
+    if (position) {
+      object3D.lookAt(new THREE.Vector3(position.x, position.y, position.z));
+      return;
+    }
+
+    // No longer looking at anything (i.e., look-at="").
+    if (!position && !targetSelector) { return self.remove(); }
+  },
+
+  /**
+   * Remove follow behavior on remove (callback).
+   */
+  remove: function () {
+    this.el.sceneEl.removeBehavior(this);
+  },
+
+  beginTracking: function (targetEl) {
+    this.target3D = targetEl.object3D;
+    this.el.sceneEl.addBehavior(this);
+  },
+
+  /**
+   * Determine whether attribute value is a target selector or a position.
+   * Parse the attribute value if it is a position.
+   *
+   * @param {string} value - HTML attribute of component.
+   * @returns {object}
+   */
+  parse: function (value) {
+    if (!value) {
+      return {
+        position: null,
+        targetSelector: null
+      };
+    }
+    // Check if value is a position. Need to match digits since a target selector could have
+    // three values as well (e.g., look-at="#el .el .box").
+    if (isCoordinate(value)) {
+      return {
+        position: coordinates.parse(value),
+        targetSelector: null
+      };
+    }
+    return {
+      position: null,
+      targetSelector: value
+    };
+  },
+
+  stringify: coordinates.componentMixin.stringify
+});
+
+},{"../../lib/three":2,"../core/component":38,"../utils/coordinates":41,"../utils/debug":42}],20:[function(require,module,exports){
+var registerComponent = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+
+// To avoid recalculation at every mouse movement tick
+var PI_2 = Math.PI / 2;
+
+module.exports.Component = registerComponent('look-controls', {
+  dependencies: ['position', 'rotation'],
+
+  schema: {
+    enabled: { default: true }
+  },
+
+  init: function () {
+    var scene = this.el.sceneEl;
+    this.setupMouseControls();
+    this.setupHMDControls();
+    this.attachEventListeners();
+    scene.addBehavior(this);
+    this.previousPosition = new THREE.Vector3();
+    this.deltaPosition = new THREE.Vector3();
+  },
+
+  setupMouseControls: function () {
+    this.canvasEl = document.querySelector('a-scene').canvas;
+    // The canvas where the scene is painted
+    this.mouseDown = false;
+    this.pitchObject = new THREE.Object3D();
+    this.yawObject = new THREE.Object3D();
+    this.yawObject.position.y = 10;
+    this.yawObject.add(this.pitchObject);
+  },
+
+  setupHMDControls: function () {
+    this.dolly = new THREE.Object3D();
+    this.euler = new THREE.Euler();
+    this.controls = new THREE.VRControls(this.dolly);
+    this.zeroQuaternion = new THREE.Quaternion();
+  },
+
+  attachEventListeners: function () {
+    var canvasEl = document.querySelector('a-scene').canvas;
+
+    // Mouse Events
+    canvasEl.addEventListener('mousedown', this.onMouseDown.bind(this), true);
+    canvasEl.addEventListener('mousemove', this.onMouseMove.bind(this), true);
+    canvasEl.addEventListener('mouseup', this.releaseMouse.bind(this), true);
+    canvasEl.addEventListener('mouseout', this.releaseMouse.bind(this), true);
+
+    // Touch events
+    canvasEl.addEventListener('touchstart', this.onTouchStart.bind(this));
+    canvasEl.addEventListener('touchmove', this.onTouchMove.bind(this));
+    canvasEl.addEventListener('touchend', this.onTouchEnd.bind(this));
+  },
+
+  update: function () {
+    if (!this.data.enabled) { return; }
+    this.controls.update();
+    this.updateOrientation();
+    this.updatePosition();
+  },
+
+  updateOrientation: (function () {
+    var hmdEuler = new THREE.Euler();
+    hmdEuler.order = 'YXZ';
+    return function () {
+      var pitchObject = this.pitchObject;
+      var yawObject = this.yawObject;
+      var hmdQuaternion = this.calculateHMDQuaternion();
+      hmdEuler.setFromQuaternion(hmdQuaternion);
+      this.el.setAttribute('rotation', {
+        x: THREE.Math.radToDeg(hmdEuler.x) + THREE.Math.radToDeg(pitchObject.rotation.x),
+        y: THREE.Math.radToDeg(hmdEuler.y) + THREE.Math.radToDeg(yawObject.rotation.y),
+        z: THREE.Math.radToDeg(hmdEuler.z)
+      });
+    };
+  })(),
+
+  calculateHMDQuaternion: (function () {
+    var hmdQuaternion = new THREE.Quaternion();
+    return function () {
+      var dolly = this.dolly;
+      if (!this.zeroed && !dolly.quaternion.equals(this.zeroQuaternion)) {
+        this.zeroOrientation();
+        this.zeroed = true;
+      }
+      hmdQuaternion.copy(this.zeroQuaternion).multiply(dolly.quaternion);
+      return hmdQuaternion;
+    };
+  })(),
+
+  updatePosition: (function () {
+    var position = new THREE.Vector3();
+    var quaternion = new THREE.Quaternion();
+    var scale = new THREE.Vector3();
+    return function () {
+      var el = this.el;
+      var deltaPosition = this.calculateDeltaPosition();
+      var currentPosition = el.getComputedAttribute('position');
+      this.el.object3D.matrixWorld.decompose(position, quaternion, scale);
+      deltaPosition.applyQuaternion(quaternion);
+      el.setAttribute('position', {
+        x: currentPosition.x + deltaPosition.x,
+        y: currentPosition.y + deltaPosition.y,
+        z: currentPosition.z + deltaPosition.z
+      });
+    };
+  })(),
+
+  calculateDeltaPosition: function () {
+    var dolly = this.dolly;
+    var deltaPosition = this.deltaPosition;
+    var previousPosition = this.previousPosition;
+    deltaPosition.copy(dolly.position);
+    deltaPosition.sub(previousPosition);
+    previousPosition.copy(dolly.position);
+    return deltaPosition;
+  },
+
+  updateHMDQuaternion: (function () {
+    var hmdQuaternion = new THREE.Quaternion();
+    return function () {
+      var dolly = this.dolly;
+      this.controls.update();
+      if (!this.zeroed && !dolly.quaternion.equals(this.zeroQuaternion)) {
+        this.zeroOrientation();
+        this.zeroed = true;
+      }
+      hmdQuaternion.copy(this.zeroQuaternion).multiply(dolly.quaternion);
+      return hmdQuaternion;
+    };
+  })(),
+
+  zeroOrientation: function () {
+    var euler = new THREE.Euler();
+    euler.setFromQuaternion(this.dolly.quaternion.clone().inverse());
+    // Cancel out roll and pitch. We want to only reset yaw
+    euler.z = 0;
+    euler.x = 0;
+    this.zeroQuaternion.setFromEuler(euler);
+  },
+
+  onMouseMove: function (event) {
+    var pitchObject = this.pitchObject;
+    var yawObject = this.yawObject;
+    var previousMouseEvent = this.previousMouseEvent;
+
+    if (!this.mouseDown || !this.data.enabled) { return; }
+
+    var movementX = event.movementX || event.mozMovementX;
+    var movementY = event.movementY || event.mozMovementY;
+
+    if (movementX === undefined || movementY === undefined) {
+      movementX = event.screenX - previousMouseEvent.screenX;
+      movementY = event.screenY - previousMouseEvent.screenY;
+    }
+    this.previousMouseEvent = event;
+
+    yawObject.rotation.y -= movementX * 0.002;
+    pitchObject.rotation.x -= movementY * 0.002;
+    pitchObject.rotation.x = Math.max(-PI_2, Math.min(PI_2, pitchObject.rotation.x));
+  },
+
+  onMouseDown: function (event) {
+    this.mouseDown = true;
+    this.previousMouseEvent = event;
+  },
+
+  releaseMouse: function () {
+    this.mouseDown = false;
+  },
+
+  onTouchStart: function (e) {
+    if (e.touches.length !== 1) { return; }
+    this.touchStart = {
+      x: e.touches[0].pageX,
+      y: e.touches[0].pageY
+    };
+    this.touchStarted = true;
+  },
+
+  onTouchMove: function (e) {
+    var deltaY;
+    var yawObject = this.yawObject;
+    if (!this.touchStarted) { return; }
+    deltaY = 2 * Math.PI * (e.touches[0].pageX - this.touchStart.x) / this.canvasEl.clientWidth;
+    // Limits touch orientaion to to yaw (y axis)
+    yawObject.rotation.y -= deltaY * 0.5;
+    this.touchStart = {
+      x: e.touches[0].pageX,
+      y: e.touches[0].pageY
+    };
+  },
+
+  onTouchEnd: function () {
+    this.touchStarted = false;
+  }
+});
+
+},{"../../lib/three":2,"../core/component":38}],21:[function(require,module,exports){
+/* global Promise */
+var debug = require('../utils/debug');
+var diff = require('../utils').diff;
+var registerComponent = require('../core/component').registerComponent;
+var srcLoader = require('../utils/src-loader');
+var THREE = require('../../lib/three');
+
+var CubeLoader = new THREE.CubeTextureLoader();
+var error = debug('components:material:error');
+var TextureLoader = new THREE.TextureLoader();
+var texturePromises = {};
+var warn = debug('components:material:warn');
+
+var MATERIAL_TYPE_BASIC = 'MeshBasicMaterial';
+var MATERIAL_TYPE_STANDARD = 'MeshStandardMaterial';
+
+/**
+ * Material component.
+ *
+ * @namespace material
+ * @param {string} color - Diffuse color.
+ * @param {string} envMap - To load a environment cubemap. Takes a selector
+ *         to an element containing six img elements, or a comma-separated
+ *         string of direct url()s.
+ * @param {boolean} fog - Whether or not to be affected by fog.
+ * @param {number} height - Height to render texture.
+ * @param {number} metalness - Parameter for physical/standard material.
+ * @param {number} opacity - [0-1].
+ * @param {number} reflectivity - Parameter for physical/standard material.
+ * @param {string} repeat - X and Y value for size of texture repeating
+ *         (in UV units).
+ * @param {number} roughness - Parameter for physical/standard material.
+ * @param {string} [side=front] - Which side(s) to render (i.e., front, back,
+ *         both).
+ * @param {string} shader - Determines how material is shaded. Defaults to `standard`,
+ *         three.js's implementation of PBR. Another option is `flat` where we use
+ *         MeshBasicMaterial.
+ * @param {string} src - To load a texture. takes a selector to an img/video
+ *         element or a direct url().
+ * @param {boolean} transparent - Whether to render transparent the alpha
+ *         channel of a texture (e.g., .png).
+ * @param {number} width - Width to render texture.
+ */
+module.exports.Component = registerComponent('material', {
+  schema: {
+    color: { default: '#FFF' },
+    envMap: { default: '' },
+    fog: { default: true },
+    height: { default: 360 },
+    metalness: { default: 0.0, min: 0.0, max: 1.0, if: { shader: ['standard'] } },
+    opacity: { default: 1.0, min: 0.0, max: 1.0 },
+    reflectivity: { default: 1.0, min: 0.0, max: 1.0, if: { shader: ['standard'] } },
+    repeat: { default: '' },
+    roughness: { default: 0.5, min: 0.0, max: 1.0, if: { shader: ['standard'] } },
+    shader: { default: 'standard', oneOf: ['flat', 'standard'] },
+    side: { default: 'front', oneOf: ['front', 'back', 'double'] },
+    src: { default: '' },
+    transparent: { default: false },
+    width: { default: 640 }
+  },
+
+  init: function () {
+    this.isLoadingEnvMap = false;
+    this.material = null;
+    this.textureSrc = null;
+  },
+
+  /**
+   * Update or create material.
+   *
+   * Material type depends on shader:
+   *   shader=flat - MeshBasicMaterial.
+   *   shader=XXX - MeshStandardMaterial.
+   *
+   * @param {object|null} oldData
+   */
+  update: function (oldData) {
+    var data = this.data;
+    var material;
+    var materialType = getMaterialType(data);
+    var src = data.src;
+
+    if (!oldData || getMaterialType(oldData) !== materialType) {
+      material = this.createMaterial(getMaterialData(data), materialType);
+    } else {
+      material = this.updateMaterial(processMaterialData(diff(oldData, data)));
+    }
+
+    // Load textures and/or cubemaps.
+    if (material.type === MATERIAL_TYPE_STANDARD) { this.updateEnvMap(); }
+    this.updateTexture(src);
+  },
+
+  /**
+   * Remove material on remove (callback).
+   */
+  remove: function () {
+    var el = this.el;
+    var defaultColor = this.schema.color.default;
+    var defaultMaterial = new THREE.MeshBasicMaterial({ color: defaultColor });
+    var object3D = el.object3D;
+    if (object3D) { object3D.material = defaultMaterial; }
+    el.sceneEl.unregisterMaterial(this.material);
+  },
+
+  /**
+   * (Re)create new material. Has side-effects of setting `this.material` and updating
+   * material registration in scene.
+   *
+   * @param {object} data - Material component data.
+   * @param {object} type - Material type to create.
+   * @returns {object} Material.
+   */
+  createMaterial: function (data, type) {
+    var material;
+    var sceneEl = this.el.sceneEl;
+    if (this.material) {
+      sceneEl.unregisterMaterial(this.material);
+    }
+    material = this.material = this.el.object3D.material = new THREE[type](data);
+    sceneEl.registerMaterial(material);
+    return material;
+  },
+
+  /**
+   * Updating existing material.
+   *
+   * @param {object} data - Material component data.
+   * @returns {object} Material.
+   */
+  updateMaterial: function (data) {
+    var material = this.material;
+    Object.keys(data).forEach(function (key) {
+      material[key] = data[key];
+    });
+    return material;
+  },
+
+  /**
+   * Handle environment cubemap. Textures are cached in texturePromises.
+   */
+  updateEnvMap: function () {
+    var self = this;
+    var material = this.material;
+    var envMap = this.data.envMap;
+    // Environment cubemaps.
+    if (!envMap || this.isLoadingEnvMap) {
+      material.envMap = null;
+      material.needsUpdate = true;
+      return;
+    }
+    this.isLoadingEnvMap = true;
+    if (texturePromises[envMap]) {
+      // Another material is already loading this texture. Wait on promise.
+      texturePromises[envMap].then(function (cube) {
+        self.isLoadingEnvMap = false;
+        material.envMap = cube;
+        material.needsUpdate = true;
+      });
+    } else {
+      // Material is first to load this texture. Load and resolve texture.
+      texturePromises[envMap] = new Promise(function (resolve) {
+        srcLoader.validateCubemapSrc(envMap, function loadEnvMap (urls) {
+          CubeLoader.load(urls, function (cube) {
+            // Texture loaded.
+            self.isLoadingEnvMap = false;
+            material.envMap = cube;
+            resolve(cube);
+          });
+        });
+      });
+    }
+  },
+
+  /*
+   * Updates material texture map.
+   *
+   * @param {string|object} src - An <img> / <video> element or url to an image/video file.
+   */
+  updateTexture: function (src) {
+    var data = this.data;
+    var material = this.material;
+    if (src) {
+      if (src !== this.textureSrc) {
+        // Texture added or changed.
+        this.textureSrc = src;
+        srcLoader.validateSrc(src, loadImage, loadVideo);
+      }
+    } else {
+      // Texture removed.
+      material.map = null;
+      material.needsUpdate = true;
+    }
+    function loadImage (src) { loadImageTexture(material, src, data.repeat); }
+    function loadVideo (src) { loadVideoTexture(material, src, data.width, data.height); }
+  }
+});
+
+/**
+ * Sets image texture on material as `map`.
+ *
+ * @param {object} material - three.js material.
+ * @param {string|object} src - An <img> element or url to an image file.
+ * @param {string} repeat - X and Y value for size of texture repeating (in UV units).
+ */
+function loadImageTexture (material, src, repeat) {
+  var isEl = typeof src !== 'string';
+
+  var onLoad = createTexture;
+  var onProgress = function () {};
+  var onError = function (xhr) {
+    error('The URL "$s" could not be fetched (Error code: %s; Response: %s)',
+          xhr.status, xhr.statusText);
+  };
+
+  if (isEl) {
+    createTexture(src);
+  } else {
+    TextureLoader.load(src, onLoad, onProgress, onError);
+  }
+
+  function createTexture (texture) {
+    if (!(texture instanceof THREE.Texture)) { texture = new THREE.Texture(texture); }
+    var repeatXY;
+    if (repeat) {
+      repeatXY = repeat.split(' ');
+      if (repeatXY.length === 2) {
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set(parseInt(repeatXY[0], 10),
+                           parseInt(repeatXY[1], 10));
+      }
+    }
+    material.map = texture;
+    texture.needsUpdate = true;
+    material.needsUpdate = true;
+  }
+}
+
+/**
+ * Creates a video element to be used as a texture.
+ *
+ * @param {object} material - three.js material.
+ * @param {string} src - Url to a video file.
+ * @param {number} width - Width of the video.
+ * @param {number} height - Height of the video.
+ * @returns {Element} Video element.
+ */
+function createVideoEl (material, src, width, height) {
+  var el = material.videoEl || document.createElement('video');
+  function onError () {
+    warn('The URL "$s" is not a valid image or video', src);
+  }
+  el.width = width;
+  el.height = height;
+  // Attach event listeners if brand new video element.
+  if (el !== this.videoEl) {
+    el.autoplay = true;
+    el.loop = true;
+    el.crossOrigin = true;
+    el.addEventListener('error', onError, true);
+    material.videoEl = el;
+  }
+  el.src = src;
+  return el;
+}
+
+/**
+ * Sets video texture on material as map.
+ *
+ * @param {object} material - three.js material.
+ * @param {string} src - Url to a video file.
+ * @param {number} width - Width of the video.
+ * @param {number} height - Height of the video.
+*/
+function loadVideoTexture (material, src, height, width) {
+  // three.js video texture loader requires a <video>.
+  var videoEl = typeof src !== 'string' ? fixVideoAttributes(src) : createVideoEl(material, src, height, width);
+  var texture = new THREE.VideoTexture(videoEl);
+  texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  material.map = texture;
+  material.needsUpdate = true;
+}
+
+/**
+ * Fixes a video element's attributes to prevent developers from accidentally
+ * passing the wrong attribute values to commonly misused video attributes.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video#Attributes
+ * @param {Element} videoEl - Video element.
+ * @returns {Element} Video element with the correct properties updated.
+ */
+function fixVideoAttributes (videoEl) {
+  // The `<video>` element treats `loop` and `muted` as boolean attributes, but
+  // of course does not with `autoplay`, `controls`, `preload` (and `crossorigin`).
+  // If we get passed a `<video autoplay="false">`, let's assume the dev wanted
+  // `autoplay` to be disabled.
+  videoEl.autoplay = videoEl.getAttribute('autoplay') !== 'false';
+  videoEl.controls = videoEl.getAttribute('controls') !== 'false';
+  if (videoEl.getAttribute('preload') === 'false') {
+    videoEl.preload = 'none';
+  }
+  return videoEl;
+}
+
+/**
+ * Builds and normalize material data, normalizing stuff along the way.
+ *
+ * @param {object} data - Material data.
+ * @returns {object} data - Processed material data.
+ */
+function getMaterialData (data) {
+  var materialData = {
+    color: data.color,
+    side: data.side,
+    opacity: data.opacity,
+    transparent: data.transparent !== false || data.opacity < 1.0
+  };
+  if (getMaterialType(data) === MATERIAL_TYPE_STANDARD) {
+    // Attach standard material parameters.
+    materialData.metalness = data.metalness;
+    materialData.reflectivity = data.reflectivity;
+    materialData.roughness = data.roughness;
+  }
+  return processMaterialData(materialData);
+}
+
+/**
+ * Necessary transforms to material data before passing to three.js.
+ *
+ * @param {object} data - Material data.
+ * @returns {object} Processed material data.
+ */
+function processMaterialData (data) {
+  if ('color' in data) {
+    data.color = new THREE.Color(data.color);
+  }
+  if ('opacity' in data && data.opacity < 1) {
+    data.transparent = true;
+  }
+  if ('side' in data) {
+    data.side = getSide(data.side);
+  }
+  return data;
+}
+
+/**
+ * Get material type based on shader.
+ *
+ * @param {object} Material component data.
+ * @returns {string} Material type (as three.js constructor name)
+ */
+function getMaterialType (data) {
+  return data.shader === 'flat' ? MATERIAL_TYPE_BASIC : MATERIAL_TYPE_STANDARD;
+}
+
+/**
+ * Returns a three.js constant determining which material face sides to render
+ * based on the side parameter (passed as a component attribute).
+ *
+ * @param {string} [side=front] - `front`, `back`, or `double`.
+ * @returns {number} THREE.FrontSide, THREE.BackSide, or THREE.DoubleSide.
+ */
+function getSide (side) {
+  switch (side) {
+    case 'back': {
+      return THREE.BackSide;
+    }
+    case 'double': {
+      return THREE.DoubleSide;
+    }
+    default: {
+      // Including case `front`.
+      return THREE.FrontSide;
+    }
+  }
+}
+
+},{"../../lib/three":2,"../core/component":38,"../utils":43,"../utils/debug":42,"../utils/src-loader":44}],22:[function(require,module,exports){
+var coordinatesMixin = require('../utils/coordinates').componentMixin;
+var registerComponent = require('../core/component').registerComponent;
+var utils = require('../utils/');
+
+module.exports.Component = registerComponent('position', utils.extend({
+  schema: {
+    x: { default: 0 },
+    y: { default: 0 },
+    z: { default: 0 }
+  },
+
+  update: function () {
+    var object3D = this.el.object3D;
+    var data = this.data;
+    object3D.position.set(data.x, data.y, data.z);
+  }
+}, coordinatesMixin));
+
+},{"../core/component":38,"../utils/":43,"../utils/coordinates":41}],23:[function(require,module,exports){
+var registerComponent = require('../core/component').registerComponent;
+var requestInterval = require('request-interval');
+var THREE = require('../../lib/three');
+
+module.exports.Component = registerComponent('raycaster', {
+  init: function () {
+    this.raycaster = new THREE.Raycaster();
+    this.intersectedEl = null;
+    this.pollForHoverIntersections();
+  },
+
+  remove: function () {
+    requestInterval.clear(this.pollInterval);
+  },
+
+  pollForHoverIntersections: function () {
+    this.pollInterval = requestInterval(100, this.getIntersections.bind(this));
+  },
+
+  getIntersections: function () {
+    var closest = this.getClosestIntersected();
+    if (closest) {
+      this.handleIntersection(closest);
+      return;
+    }
+    // If we have no intersections other than the cursor itself,
+    // but we still have a previously intersected element, clear it.
+    if (this.intersectedEl) {
+      this.clearExistingIntersection();
+    }
+  },
+
+  intersect: function (objects) {
+    var el = this.el;
+    var raycaster = this.raycaster;
+    var cursor = el.object3D;
+    var parent = el.parentNode.object3D;
+    var originPosition = new THREE.Vector3().setFromMatrixPosition(parent.matrixWorld);
+    var cursorPosition = new THREE.Vector3().setFromMatrixPosition(cursor.matrixWorld);
+    var direction = cursorPosition.sub(originPosition).normalize();
+    raycaster.set(originPosition, direction);
+    return raycaster.intersectObjects(objects, true);
+  },
+
+  /**
+   * Returns the closest intersected object.
+   *
+   * @returns {Object|null}
+   *   The closest intersected element that is not the cursor itself,
+   *   an invisible element, or not a a-frame entity element.
+   *   If no objects are intersected, `null` is returned.
+   */
+  getClosestIntersected: function () {
+    var scene = this.el.sceneEl.object3D;
+    var cursorEl = this.el;
+    var intersectedObj;
+    var intersectedObjs = this.intersect(scene.children);
+    for (var i = 0; i < intersectedObjs.length; ++i) {
+      intersectedObj = intersectedObjs[i];
+      // If the intersected object is the cursor itself
+      // or the object is further than the max distance
+      if (intersectedObj.object.el === undefined) { continue; }
+      if (intersectedObj.object.el === cursorEl) { continue; }
+      if (!intersectedObj.object.visible) { continue; }
+      return intersectedObj;
+    }
+    return null;
+  },
+
+  /**
+   * Remembers the last intersected element
+   */
+  setExistingIntersection: function (el, distance) {
+    this.intersectedEl = el;
+    this.el.emit('intersection', { el: el, distance: distance });
+  },
+
+  /**
+   * Emits a `mouseleave` event and clears info about the last intersection.
+   */
+  clearExistingIntersection: function () {
+    var intersectedEl = this.intersectedEl;
+    this.el.emit('intersectioncleared', { el: intersectedEl });
+    this.intersectedEl = null;
+  },
+
+  handleIntersection: function (obj) {
+    var el = obj.object.el;
+
+    // A new intersection where previously a different element was
+    // and now needs a mouseleave event.
+    if (this.intersectedEl !== el) {
+      this.clearExistingIntersection();
+    }
+    this.setExistingIntersection(el, obj.distance);
+  }
+});
+
+},{"../../lib/three":2,"../core/component":38,"request-interval":91}],24:[function(require,module,exports){
+var coordinatesMixin = require('../utils/coordinates').componentMixin;
+var registerComponent = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+var utils = require('../utils/');
+
+module.exports.Component = registerComponent('rotation', utils.extend({
+  schema: {
+    x: { default: 0 },
+    y: { default: 0 },
+    z: { default: 0 }
+  },
+
+  /**
+   * Updates object3D rotation.
+   */
+  update: function () {
+    var data = this.data;
+    var object3D = this.el.object3D;
+    object3D.rotation.set(THREE.Math.degToRad(data.x),
+                          THREE.Math.degToRad(data.y),
+                          THREE.Math.degToRad(data.z));
+    object3D.rotation.order = 'YXZ';
+  }
+}, coordinatesMixin));
+
+},{"../../lib/three":2,"../core/component":38,"../utils/":43,"../utils/coordinates":41}],25:[function(require,module,exports){
+var coordinatesMixin = require('../utils/coordinates').componentMixin;
+var registerComponent = require('../core/component').registerComponent;
+var utils = require('../utils/');
+
+// Avoids triggering a zero-determinant which makes object3D matrix non-invertible.
+var zeroScale = 0.00001;
+
+module.exports.Component = registerComponent('scale', utils.extend({
+  schema: {
+    x: { default: 1 },
+    y: { default: 1 },
+    z: { default: 1 }
+  },
+
+  update: function () {
+    var data = this.data;
+    var object3D = this.el.object3D;
+    var x = data.x === 0 ? zeroScale : data.x;
+    var y = data.y === 0 ? zeroScale : data.y;
+    var z = data.z === 0 ? zeroScale : data.z;
+    object3D.scale.set(x, y, z);
+  }
+}, coordinatesMixin));
+
+},{"../core/component":38,"../utils/":43,"../utils/coordinates":41}],26:[function(require,module,exports){
+var debug = require('../utils/debug');
+var diff = require('../utils').diff;
+var registerComponent = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+
+var warn = debug('components:sound:warn');
+
+/**
+ * Sound component.
+ *
+ * @param {bool} [autoplay=false]
+ * @param {string} on
+ * @param {bool} [loop=false]
+ * @param {number} [volume=1]
+ */
+module.exports.Component = registerComponent('sound', {
+  schema: {
+    src: { default: '' },
+    on: { default: 'click' },
+    autoplay: { default: false },
+    loop: { default: false },
+    volume: { default: 1 }
+  },
+
+  init: function () {
+    this.listener = null;
+    this.sound = null;
+  },
+
+  update: function (oldData) {
+    var data = this.data;
+    var diffData = diff(oldData || {}, data);
+    var el = this.el;
+    var sound = this.sound;
+    var src = data.src;
+    var srcChanged = 'src' in diffData;
+
+    // Create new sound if not yet created or changing `src`.
+    if (srcChanged) {
+      if (!src) {
+        warn('Audio source was not specified with `src`');
+        return;
+      }
+      sound = this.setupSound();
+    }
+
+    if (srcChanged || 'autoplay' in diffData) {
+      sound.autoplay = data.autoplay;
+    }
+
+    if (srcChanged || 'loop' in diffData) {
+      sound.setLoop(data.loop);
+    }
+
+    if (srcChanged || 'volume' in diffData) {
+      sound.setVolume(data.volume);
+    }
+
+    if ('on' in diffData) {
+      if (oldData && oldData.on) {
+        el.removeEventListener(oldData.on);
+      }
+      el.addEventListener(data.on, this.play.bind(this));
+    }
+
+    // All sound values set. Load in `src.
+    if (srcChanged) {
+      sound.load(src);
+    }
+  },
+
+  remove: function () {
+    this.el.object3D.remove(this.sound);
+  },
+
+  /**
+   * Removes current sound object, creates new sound object, adds to entity.
+   *
+   * @returns {object} sound
+   */
+  setupSound: function () {
+    var el = this.el;
+    var listener;
+    var sound = this.sound;
+
+    if (sound) {
+      this.stop();
+      el.object3D.remove(sound);
+    }
+
+    listener = this.listener = new THREE.AudioListener();
+    sound = this.sound = new THREE.Audio(listener);
+    el.object3D.add(sound);
+    return sound;
+  },
+
+  play: function () {
+    this.sound.play();
+  },
+
+  stop: function () {
+    this.sound.stop();
+  },
+
+  pause: function () {
+    this.sound.pause();
+  }
+});
+
+},{"../../lib/three":2,"../core/component":38,"../utils":43,"../utils/debug":42}],27:[function(require,module,exports){
+var registerComponent = require('../core/component').registerComponent;
+
+/**
+ * Visibility component.
+ *
+ * @param {bool}
+ */
+module.exports.Component = registerComponent('visible', {
+  schema: { default: true },
+
+  update: function () {
+    this.el.object3D.visible = this.data;
+  },
+
+  parse: function (value) {
+    return value !== 'false';
+  },
+
+  stringify: function (value) {
+    return value.toString();
+  }
+});
+
+},{"../core/component":38}],28:[function(require,module,exports){
+var registerComponent = require('../core/component').registerComponent;
+var THREE = require('../../lib/three');
+
+var MAX_DELTA = 0.2;
+
+/**
+ * WASD component.
+ *
+ * Control your entities with the WASD keys.
+ *
+ * @namespace wasd-controls
+ * @param {number} [easing=20] - How fast the movement decelerates. If you hold the
+ * keys the entity moves and if you release it will stop. Easing simulates friction.
+ * @param {number} [acceleration=65] - Determines the acceleration given
+ * to the entity when pressing the keys.
+ * @param {bool} [enabled=true] - To completely enable or disable the controls
+ * @param {bool} [fly=false] - Determines if the direction of the movement sticks
+ * to the plane where the entity started off or if there are 6 degrees of
+ * freedom as a diver underwater or a plane flying.
+ * @param {string} [wsAxis='z'] - The axis that the W and S keys operate on
+ * @param {string} [adAxis='x'] - The axis that the A and D keys operate on
+ * @param {bool} [wsInverted=false] - WS Axis is inverted
+ * @param {bool} [adInverted=false] - AD Axis is inverted
+ */
+module.exports.Component = registerComponent('wasd-controls', {
+  schema: {
+    easing: { default: 20 },
+    acceleration: { default: 65 },
+    enabled: { default: true },
+    fly: { default: false },
+    wsAxis: { default: 'z', oneOf: [ 'x', 'y', 'z' ] },
+    adAxis: { default: 'x', oneOf: [ 'x', 'y', 'z' ] },
+    wsInverted: { default: false },
+    wsEnabled: { default: true },
+    adInverted: { default: false },
+    adEnabled: { default: true }
+  },
+
+  init: function () {
+    this.setupControls();
+  },
+
+  setupControls: function () {
+    var scene = this.el.sceneEl;
+    this.prevTime = Date.now();
+    // To keep track of the pressed keys
+    this.keys = {};
+    this.velocity = new THREE.Vector3();
+    this.attachEventListeners();
+    scene.addBehavior(this);
+  },
+
+  update: function (previousData) {
+    var data = this.data;
+    var acceleration = data.acceleration;
+    var easing = data.easing;
+    var velocity = this.velocity;
+    var time = window.performance.now();
+    var delta = (time - this.prevTime) / 1000;
+    var keys = this.keys;
+    var movementVector;
+    var adAxis = data.adAxis;
+    var wsAxis = data.wsAxis;
+    var adSign = data.adInverted ? -1 : 1;
+    var wsSign = data.wsInverted ? -1 : 1;
+    var el = this.el;
+    this.prevTime = time;
+
+    // If data has changed or FPS is too low
+    // we reset the velocity
+    if (previousData || delta > MAX_DELTA) {
+      velocity[adAxis] = 0;
+      velocity[wsAxis] = 0;
+      return;
+    }
+
+    velocity[adAxis] -= velocity[adAxis] * easing * delta;
+    velocity[wsAxis] -= velocity[wsAxis] * easing * delta;
+
+    var position = el.getComputedAttribute('position');
+
+    if (data.enabled) {
+      if (data.adEnabled) {
+        if (keys[65]) { velocity[adAxis] -= adSign * acceleration * delta; } // Left
+        if (keys[68]) { velocity[adAxis] += adSign * acceleration * delta; } // Right
+      }
+      if (data.wsEnabled) {
+        if (keys[87]) { velocity[wsAxis] -= wsSign * acceleration * delta; } // Up
+        if (keys[83]) { velocity[wsAxis] += wsSign * acceleration * delta; } // Down
+      }
+    }
+
+    movementVector = this.getMovementVector(delta);
+    el.object3D.translateX(movementVector.x);
+    el.object3D.translateY(movementVector.y);
+    el.object3D.translateZ(movementVector.z);
+
+    el.setAttribute('position', {
+      x: position.x + movementVector.x,
+      y: position.y + movementVector.y,
+      z: position.z + movementVector.z
+    });
+  },
+
+  attachEventListeners: function () {
+    // Keyboard events
+    window.addEventListener('keydown', this.onKeyDown.bind(this), false);
+    window.addEventListener('keyup', this.onKeyUp.bind(this), false);
+  },
+
+  onKeyDown: function (event) {
+    this.keys[event.keyCode] = true;
+  },
+
+  onKeyUp: function (event) {
+    this.keys[event.keyCode] = false;
+  },
+
+  getMovementVector: (function (delta) {
+    var direction = new THREE.Vector3(0, 0, 0);
+    var rotation = new THREE.Euler(0, 0, 0, 'YXZ');
+    return function (delta) {
+      var velocity = this.velocity;
+      var elRotation = this.el.getAttribute('rotation');
+      direction.copy(velocity);
+      direction.multiplyScalar(delta);
+      if (!elRotation) { return direction; }
+      if (!this.data.fly) { elRotation.x = 0; }
+      rotation.set(THREE.Math.degToRad(elRotation.x),
+                   THREE.Math.degToRad(elRotation.y), 0);
+      direction.applyEuler(rotation);
+      return direction;
+    };
+  })()
+});
+
+},{"../../lib/three":2,"../core/component":38}],29:[function(require,module,exports){
+/**
+ * Animation configuration options for TWEEN.js animations.
+ * Used by `<a-animation>`.
+ */
+var TWEEN = require('tween.js');
+
+var DIRECTIONS = {
+  alternate: 'alternate',
+  alternateReverse: 'alternate-reverse',
+  normal: 'normal',
+  reverse: 'reverse'
+};
+
+var EASING_FUNCTIONS = {
+  'linear': TWEEN.Easing.Linear.None,
+
+  'ease': TWEEN.Easing.Cubic.InOut,
+  'ease-in': TWEEN.Easing.Cubic.In,
+  'ease-out': TWEEN.Easing.Cubic.Out,
+  'ease-in-out': TWEEN.Easing.Cubic.InOut,
+
+  'ease-cubic': TWEEN.Easing.Cubic.In,
+  'ease-in-cubic': TWEEN.Easing.Cubic.In,
+  'ease-out-cubic': TWEEN.Easing.Cubic.Out,
+  'ease-in-out-cubic': TWEEN.Easing.Cubic.InOut,
+
+  'ease-quad': TWEEN.Easing.Quadratic.InOut,
+  'ease-in-quad': TWEEN.Easing.Quadratic.In,
+  'ease-out-quad': TWEEN.Easing.Quadratic.Out,
+  'ease-in-out-quad': TWEEN.Easing.Quadratic.InOut,
+
+  'ease-quart': TWEEN.Easing.Quartic.InOut,
+  'ease-in-quart': TWEEN.Easing.Quartic.In,
+  'ease-out-quart': TWEEN.Easing.Quartic.Out,
+  'ease-in-out-quart': TWEEN.Easing.Quartic.InOut,
+
+  'ease-quint': TWEEN.Easing.Quintic.InOut,
+  'ease-in-quint': TWEEN.Easing.Quintic.In,
+  'ease-out-quint': TWEEN.Easing.Quintic.Out,
+  'ease-in-out-quint': TWEEN.Easing.Quintic.InOut,
+
+  'ease-sine': TWEEN.Easing.Sinusoidal.InOut,
+  'ease-in-sine': TWEEN.Easing.Sinusoidal.In,
+  'ease-out-sine': TWEEN.Easing.Sinusoidal.Out,
+  'ease-in-out-sine': TWEEN.Easing.Sinusoidal.InOut,
+
+  'ease-expo': TWEEN.Easing.Exponential.InOut,
+  'ease-in-expo': TWEEN.Easing.Exponential.In,
+  'ease-out-expo': TWEEN.Easing.Exponential.Out,
+  'ease-in-out-expo': TWEEN.Easing.Exponential.InOut,
+
+  'ease-circ': TWEEN.Easing.Circular.InOut,
+  'ease-in-circ': TWEEN.Easing.Circular.In,
+  'ease-out-circ': TWEEN.Easing.Circular.Out,
+  'ease-in-out-circ': TWEEN.Easing.Circular.InOut,
+
+  'ease-elastic': TWEEN.Easing.Elastic.InOut,
+  'ease-in-elastic': TWEEN.Easing.Elastic.In,
+  'ease-out-elastic': TWEEN.Easing.Elastic.Out,
+  'ease-in-out-elastic': TWEEN.Easing.Elastic.InOut,
+
+  'ease-back': TWEEN.Easing.Back.InOut,
+  'ease-in-back': TWEEN.Easing.Back.In,
+  'ease-out-back': TWEEN.Easing.Back.Out,
+  'ease-in-out-back': TWEEN.Easing.Back.InOut,
+
+  'ease-bounce': TWEEN.Easing.Bounce.InOut,
+  'ease-in-bounce': TWEEN.Easing.Bounce.In,
+  'ease-out-bounce': TWEEN.Easing.Bounce.Out,
+  'ease-in-out-bounce': TWEEN.Easing.Bounce.InOut
+};
+
+var FILLS = {
+  backwards: 'backwards',
+  both: 'both',
+  forwards: 'forwards',
+  none: 'none'
+};
+
+var REPEATS = {
+  indefinite: 'indefinite'
+};
+
+var DEFAULTS = {
+  attribute: 'rotation',
+  begin: '0',
+  dur: 1000,
+  easing: 'ease',
+  direction: DIRECTIONS.normal,
+  fill: FILLS.forwards,
+  from: undefined,
+  repeat: 0,
+  to: undefined
+};
+
+module.exports.defaults = DEFAULTS;
+module.exports.directions = DIRECTIONS;
+module.exports.easingFunctions = EASING_FUNCTIONS;
+module.exports.fills = FILLS;
+module.exports.repeats = REPEATS;
+
+},{"tween.js":95}],30:[function(require,module,exports){
+var ANode = require('./a-node');
+var coerce = require('../utils/').coerce;
+var constants = require('../constants/animation');
+var coordinates = require('../utils/').coordinates;
+var registerElement = require('./a-register-element').registerElement;
+var TWEEN = require('tween.js');
+var utils = require('../utils/');
+
+var DEFAULTS = constants.defaults;
+var DIRECTIONS = constants.directions;
+var EASING_FUNCTIONS = constants.easingFunctions;
+var FILLS = constants.fills;
+var REPEATS = constants.repeats;
+var isCoordinate = coordinates.isCoordinate;
+
+/**
+ * Animation element that applies Tween animation to parent element (entity).
+ * Takes after the Web Animations spec.
+ *
+ * @namespace <a-animation>
+ * @param {string} attribute -
+ *   Entity attribute to animate. Can be a component name (e.g., `position`) if the component
+ *   is set via a single value. Or can be a dot-separated componentName.componentAttr to
+ *   animate a single component attribute (e.g., `light.intensity`, `material.opacity`).
+ * @param {number|string} begin -
+ *   Either milliseconds to delay or an event name to wait upon before starting animation.
+ * @param {string} direction -
+ *   Direction of the animation between from and to.
+ *     - alternate: Even iterations played as specified, odd iterations played in reverse
+ *                direction from way specified.
+ *     - alternate-reverse: Even iterations are played in the reverse direction from way
+ *                        specified, odd iterations played as specified.
+ *     - normal: All iterations are played as specified.
+ *     - reverse: All iterations are played in reverse direction from way specified.
+ * @param {number} dur - How long to run the animation in milliseconds.
+ * @param {string} easing -
+ *   Easing function of animation (e.g., ease, ease-in, ease-in-out, ease-out, linear).
+ * @param {string} [fill=forwards] -
+ *   Determines effect of animation when not in play.
+ *     - backwards: Before animation, set initial value to `from`.
+ *     - both: Before animation, backwards fill. After animation, forwards fill.
+ *     - forwards: After animation, value will stay at `to`.
+ *     - none: Animation has no effect when not in play.
+ * @param {number} from - Start value. Defaults to the entity's current value for that attr.
+ * @param {number|string} repeat -
+ *   How the animation should repeat (e.g., a number or `indefinite`).
+ * @param {number} to - End value.
+ * @member {number} count -
+ *   Decrementing counter for how many cycles of animations left to run.
+ * @member {Element} el - Entity which the animation is modifying to.
+ * @member initialValue - Value before animation started. Used to restore state.
+ * @member {bool} isRunning - Whether animation is currently running.
+ * @member {function} partialSetAttribute -
+ *   setAttribute function that is agnostic to whether we are setting an attribute value
+ *   or a component attribute value. The el and the attribute names are bundled with
+ *   the function.
+ * @member {object} tween - tween.js object.
+ */
+module.exports.AAnimation = registerElement('a-animation', {
+  prototype: Object.create(ANode.prototype, {
+    createdCallback: {
+      value: function () {
+        this.isRunning = false;
+        this.partialSetAttribute = function () { /* no-op */ };
+        this.tween = null;
+      }
+    },
+
+    attachedCallback: {
+      value: function () {
+        var self = this;
+        var el = self.el = self.parentNode;
+
+        if (el.isNode) {
+          init();
+        } else {
+          // To handle elements that are not yet `<a-entity>`s (e.g., templates).
+          el.addEventListener('nodeready', init.bind(self));
+        }
+
+        function init () {
+          self.bindMethods();
+          self.applyMixin();
+          self.update();
+          self.load();
+        }
+      }
+    },
+
+    attributeChangedCallback: {
+      value: function (attr, oldVal, newVal) {
+        if (!this.hasLoaded || !this.isRunning) { return; }
+        this.stop();
+        this.applyMixin();
+        this.update();
+      }
+    },
+
+    /**
+     * Builds a Tween object to handle animations.
+     * Uses tween.js's from, to, delay, easing, repeat, onUpdate, and onComplete.
+     * Note: tween.js takes objects for its `from` and `to` values.
+     *
+     * @returns {object}
+     */
+    getTween: {
+      value: function () {
+        var self = this;
+        var data = self.data;
+        var el = self.el;
+        var animationValues;
+        var attribute = data.attribute;
+        var begin = parseInt(data.begin, 10);
+        var currentValue = el.getComputedAttribute(attribute);
+        var direction = self.getDirection(data.direction);
+        var easing = EASING_FUNCTIONS[data.easing];
+        var fill = data.fill;
+        var from;
+        var repeat = data.repeat === REPEATS.indefinite ? Infinity : 0;
+        var to;
+        var toTemp;
+        var yoyo = false;
+
+        animationValues = getAnimationValues(el, attribute, data.from, data.to, currentValue);
+        from = animationValues.from;
+        to = animationValues.to;
+        self.partialSetAttribute = animationValues.partialSetAttribute;
+
+        if (self.count === undefined) {
+          self.count = repeat === Infinity ? 0 : parseInt(data.repeat, 10);
+        }
+
+        if (isNaN(begin)) { begin = 0; }
+
+        // Store initial state.
+        self.initialValue = cloneValue(currentValue);
+
+        // Handle indefinite + forwards + alternate yoyo edge-case (#405).
+        if (repeat === Infinity && fill === FILLS.forwards &&
+            [DIRECTIONS.alternate,
+             DIRECTIONS.alternateReverse].indexOf(data.direction) !== -1) {
+          yoyo = true;
+        }
+
+        // If reversing, swap from and to.
+        if (direction === DIRECTIONS.reverse) {
+          toTemp = to;
+          to = cloneValue(from);
+          from = cloneValue(toTemp);
+        }
+
+        // If fill is backwards or both, start animation at the specified from.
+        if ([FILLS.backwards, FILLS.both].indexOf(fill) !== -1) {
+          self.partialSetAttribute(from);
+        }
+
+        // Create Tween.
+        return new TWEEN.Tween(cloneValue(from))
+          .to(to, data.dur)
+          .delay(begin)
+          .easing(easing)
+          .repeat(repeat)
+          .yoyo(yoyo)
+          .onUpdate(function () {
+            self.partialSetAttribute(this);
+          })
+          .onComplete(self.onCompleted.bind(self));
+      }
+    },
+
+    /**
+     * Animation parameters changed. Stop current animation, get a new one, and start it.
+     */
+    update: {
+      value: function () {
+        var data = this.data;
+        var begin = data.begin;
+        // Cancel previous event listeners
+        this.removeEventListeners(this.evt);
+        this.addEventListeners(begin);
+        // Store new event name.
+        this.evt = begin;
+        // If `begin` is a number, start the animation right away.
+        if (!isNaN(begin)) {
+          this.stop();
+          this.start();
+        }
+      },
+      writable: window.debug
+    },
+
+    /**
+     * Callback for when a cycle of an animation is complete. Handles when to completely
+     * finish the animation.
+     *
+     * If `repeat` is set to a value, this method is called after each repeat. Repeats are
+     * handled by ending the current animation and creating a new one with `count` updated.
+     * Note that this method is *not* called if repeat is set to `indefinite`.
+     */
+    onCompleted: {
+      value: function () {
+        var data = this.data;
+        this.isRunning = false;
+        if ([FILLS.backwards, FILLS.none].indexOf(data.fill) !== -1) {
+          this.partialSetAttribute(this.initialValue);
+        }
+        if (this.count === 0) {
+          this.count = undefined;
+          this.emit('animationend');
+          return;
+        }
+        this.isRunning = false;
+        this.count--;
+        this.start();
+      }
+    },
+
+    start: {
+      value: function () {
+        if (this.isRunning) { return; }
+        this.tween = this.getTween();
+        this.isRunning = true;
+        this.tween.start();
+        this.emit('animationstart');
+      },
+      writable: true
+    },
+
+    stop: {
+      value: function () {
+        var tween = this.tween;
+        if (!tween) { return; }
+        tween.stop();
+        this.isRunning = false;
+        this.partialSetAttribute(this.initialValue);
+      },
+      writable: true
+    },
+
+    /**
+     * Handle alternating directions. Given the current direction, calculate the next one,
+     * and store the current one.
+     *
+     * @param {string} direction
+     * @returns {string} Direction that the next individual cycle of the animation will go
+     *          towards.
+     */
+    getDirection: {
+      value: function (direction) {
+        if (direction === DIRECTIONS.alternate) {
+          this.prevDirection =
+            this.prevDirection === DIRECTIONS.normal ? DIRECTIONS.reverse : DIRECTIONS.normal;
+          return this.prevDirection;
+        }
+        if (direction === DIRECTIONS.alternateReverse) {
+          this.prevDirection =
+            this.prevDirection === DIRECTIONS.reverse ? DIRECTIONS.normal : DIRECTIONS.reverse;
+          return this.prevDirection;
+        }
+        return direction;
+      }
+    },
+
+    /**
+     * Preemptive binding to attach/detach event listeners (see `update`).
+     */
+    bindMethods: {
+      value: function () {
+        this.start = this.start.bind(this);
+        this.stop = this.stop.bind(this);
+        this.onStateAdded = this.onStateAdded.bind(this);
+        this.onStateRemoved = this.onStateRemoved.bind(this);
+      }
+    },
+
+    addEventListeners: {
+      value: function (evts) {
+        var el = this.el;
+        var start = this.start.bind(this);
+        utils.splitString(evts).forEach(function (evt) {
+          el.addEventListener(evt, start);
+        });
+        el.addEventListener('stateadded', this.onStateAdded);
+        el.addEventListener('stateremoved', this.onStateRemoved);
+      }
+    },
+
+    removeEventListeners: {
+      value: function (evts) {
+        var el = this.el;
+        var start = this.start;
+        utils.splitString(evts).forEach(function (evt) {
+          el.removeEventListener(evt, start);
+        });
+        el.removeEventListener('stateadded', this.onStateAdded);
+        el.removeEventListener('stateremoved', this.onStateRemoved);
+      }
+    },
+
+    onStateAdded: {
+      value: function (evt) {
+        if (evt.detail.state === this.data.begin) { this.start(); }
+      },
+      writable: true
+    },
+
+    onStateRemoved: {
+      value: function (evt) {
+        if (evt.detail.state === this.data.begin) { this.stop(); }
+      },
+      writable: true
+    },
+
+    /**
+     * Applies animation data from a mixin element.
+     * Works the same as component mixins but reimplemented because animations
+     * aren't components.
+     */
+    applyMixin: {
+      value: function () {
+        var data = {};
+        var elData;
+        var mixinData;
+        var mixinEl;
+
+        // Get mixin data.
+        mixinEl = document.querySelector('#' + this.getAttribute('mixin'));
+        mixinData = mixinEl ? utils.getElData(mixinEl, DEFAULTS) : {};
+
+        elData = utils.getElData(this, DEFAULTS);
+        utils.extend(data, DEFAULTS, mixinData, elData);
+        this.data = data;
+      }
+    }
+  })
+});
+
+function cloneValue (val) {
+  return utils.extend({}, val);
+}
+
+/**
+ * Deduces different animation values based on whether we are:
+ *   - animating an inner attribute of a component.
+ *   - animating a coordinate component.
+ *   - animating a boolean.
+ *   - animating a number.
+ *
+ * @param {Element} el
+ * @param {string} attribute - Tells what to animate based on whether it is dot-separated.
+ * @param {string} dataFrom - Data `from` value.
+ * @param {string} dataTo - Data `to` value.
+ * @param currentValue
+ * @returns {object}
+ *   Object with keys [from, to, partialSetAttribute].
+ *     `from` and `to`
+ *        Objects where key is attribute being animated and value is value.
+ *     `partialSetAttribute`
+ *        Closured-function that tells tween how to update the component.
+ */
+function getAnimationValues (el, attribute, dataFrom, dataTo, currentValue) {
+  var attributeSplit = attribute.split('.');
+  var coerceSchema;
+  var component;
+  var componentAttrName;
+  var componentName;
+  var from = {};
+  var partialSetAttribute;
+  var to = {};
+
+  if (attributeSplit.length === 2) {
+    getForComponentAttribute();
+  } else if (dataTo && isCoordinate(dataTo)) {
+    getForCoordinateComponent();
+  } else if (['true', 'false'].indexOf(dataTo) !== -1) {
+    getForBoolean();
+  } else {
+    getForNumber();
+  }
+  return {
+    from: from,
+    partialSetAttribute: partialSetAttribute,
+    to: to
+  };
+
+  /**
+   * Animating a component that has multiple attributes (e.g., geometry.width).
+   */
+  function getForComponentAttribute () {
+    componentName = attributeSplit[0];
+    componentAttrName = attributeSplit[1];
+    component = el.components[componentName];
+    if (!component) {
+      el.setAttribute(componentName, '');
+      component = el.components[componentName];
+    }
+    coerceSchema = component.schema;
+    if (dataFrom === undefined) {  // dataFrom can be 0.
+      from[attribute] = el.getComputedAttribute(componentName)[componentAttrName];
+    } else {
+      from[attribute] = dataFrom;
+    }
+    from[attribute] = coerce(from[attribute], coerceSchema, componentAttrName);
+    to[attribute] = coerce(dataTo, coerceSchema, componentAttrName);
+    partialSetAttribute = function (value) {
+      el.setAttribute(componentName, componentAttrName, value[attribute]);
+    };
+  }
+
+  /**
+   * Animating a component that is an XYZ coordinate (e.g., position).
+   * Will be tweening {x, y, z} all at once.
+   */
+  function getForCoordinateComponent () {
+    from = dataFrom ? coordinates.parse(dataFrom) : currentValue;
+    to = coordinates.parse(dataTo);
+    partialSetAttribute = function (value) {
+      el.setAttribute(attribute, value);
+    };
+  }
+
+  /**
+   * Animation a boolean (e.g., visible).
+   * Have to convert from boolean to an integer (0 is false, > 0 is true) for tween.
+   */
+  function getForBoolean () {
+    if (dataFrom === undefined) {
+      from[attribute] = false;
+    } else {
+      from[attribute] = strToBool(dataFrom);
+    }
+    from[attribute] = boolToNum(from[attribute]);
+    to[attribute] = boolToNum(strToBool(dataTo));
+    partialSetAttribute = function (value) {
+      el.setAttribute(attribute, !!value[attribute]);
+    };
+  }
+
+  /**
+   * Animating a numbered attribute (e.g., opacity).
+   */
+  function getForNumber () {
+    if (dataFrom === undefined) {  // dataFrom can be 0.
+      from[attribute] = parseFloat(el.getAttribute(attribute));
+    } else {
+      from[attribute] = parseFloat(dataFrom);
+    }
+    to[attribute] = parseFloat(dataTo);
+    partialSetAttribute = function (value) {
+      el.setAttribute(attribute, value[attribute]);
+    };
+  }
+}
+module.exports.getAnimationValues = getAnimationValues;
+
+/**
+ * Converts string to bool.
+ *
+ * @param {string} str - `true` or `false`.
+ * @returns {bool}
+ */
+function strToBool (str) {
+  if (str === 'true') { return true; }
+  return false;
+}
+
+/**
+ * Converts boolean to number.
+ *
+ * @param {bool}
+ * @returns {number}
+ */
+function boolToNum (bool) {
+  return bool ? 1 : 0;
+}
+
+},{"../constants/animation":29,"../utils/":43,"./a-node":35,"./a-register-element":36,"tween.js":95}],31:[function(require,module,exports){
+/* global HTMLElement */
+var re = require('./a-register-element');
+var utils = require('../utils/');
+
+var isNode = re.isNode;
+var registerElement = re.registerElement;
+
+module.exports = registerElement(
+  'a-assets',
+  {
+    prototype: Object.create(
+      HTMLElement.prototype,
+      {
+        attachedCallback: {
+          value: function () {
+            this.attachEventListeners();
+          }
+        },
+
+        attachEventListeners: {
+          value: function () {
+            var self = this;
+            var assetLoaded = this.assetLoaded.bind(this);
+            this.assetsPending = 0;
+            var children = this.querySelectorAll('*');
+            Array.prototype.slice.call(children).forEach(countElement);
+
+            if (!this.assetsPending) {
+              assetLoaded();
+            }
+
+            function countElement (node) {
+              if (!isNode(node)) { return; }
+              if (!node.hasLoaded) {
+                attachEventListener(node);
+                self.assetsPending++;
+              }
+            }
+
+            function attachEventListener (node) {
+              node.addEventListener('loaded', assetLoaded);
+            }
+          }
+        },
+
+        assetLoaded: {
+          value: function () {
+            this.assetsPending--;
+            if (this.assetsPending <= 0) {
+              this.load();
+            }
+          }
+        },
+
+        load: {
+          value: function () {
+            // To prevent emitting the loaded event more than once.
+            if (this.hasLoaded) { return; }
+            this.hasLoaded = true;
+            var data = { bubbles: false, detail: {} };
+            utils.fireEvent(this, 'loaded', data);
+          }
+        }
+      }
+    )
+  }
+);
+
+},{"../utils/":43,"./a-register-element":36}],32:[function(require,module,exports){
+/* global HTMLElement */
+var debug = require('../utils/debug');
+var registerElement = require('./a-register-element').registerElement;
+
+var warn = debug('core:cubemap:warn');
+
+/**
+ * Cubemap element that handles validation and exposes list of URLs.
+ * Does not listen to updates.
+ */
+module.exports = registerElement('a-cubemap', {
+  prototype: Object.create(HTMLElement.prototype, {
+    /**
+     * Calculates this.srcs.
+     */
+    attachedCallback: {
+      value: function () {
+        this.srcs = this.validate();
+      },
+      writable: window.debug
+    },
+
+    /**
+     * Checks for exactly six elements with [src].
+     * Does not check explicitly for <img>s in case user does not want
+     * prefetching.
+     *
+     * @returns {Array|null} - six URLs if valid, else null.
+     */
+    validate: {
+      value: function () {
+        var elements = this.querySelectorAll('[src]');
+        var i;
+        var srcs = [];
+        if (elements.length === 6) {
+          for (i = 0; i < elements.length; i++) {
+            srcs.push(elements[i].getAttribute('src'));
+          }
+          return srcs;
+        }
+        // Else if there are not six elements, throw a warning.
+        warn(
+          '<a-cubemap> did not contain exactly six elements each with a ' +
+          '`src` attribute.');
+      },
+      writable: window.debug
+    }
+  })
+});
+
+},{"../utils/debug":42,"./a-register-element":36}],33:[function(require,module,exports){
+/* global HTMLElement */
+var ANode = require('./a-node');
+var components = require('./component').components;
+var debug = require('../utils/debug');
+var re = require('./a-register-element');
+var THREE = require('../../lib/three');
+
+var isNode = re.isNode;
+var log = debug('core:a-entity');
+var error = debug('core:a-entity:error');
+var registerElement = re.registerElement;
+
+/**
+ * Entity element definition.
+ * Entities represent all elements that are part of the scene, and always have
+ * a position, rotation, and scale.
+ * In the entity-component system, entities are just a container of components.
+ *
+ * For convenience of inheriting components, the scene element inherits from
+ * this prototype. When necessary, it differentiates itself by setting
+ * `this.isScene`.
+ *
+ * @namespace Entity
+ * @member {object} components - entity's currently initialized components.
+ * @member {object} object3D - three.js object.
+ * @member {array} states
+ */
+var proto = {
+  defaults: {
+    value: {
+      position: '',
+      rotation: '',
+      scale: '',
+      visible: ''
+    }
+  },
+
+  createdCallback: {
+    value: function () {
+      this.states = [];
+      this.components = {};
+      this.object3D = new THREE.Mesh();
+    }
+  },
+
+  attributeChangedCallback: {
+    value: function (attr, oldVal, newVal) {
+      this.setEntityAttribute(attr, oldVal, newVal);
+    }
+  },
+
+  attachedCallback: {
+    value: function () {
+      this.addToParent();
+      this.load();
+    }
+  },
+
+  /**
+   * Tell parent to remove this element's object3D from its object3D.
+   * Do not call on scene element because that will cause a call to
+   * document.body.remove().
+   */
+  detachedCallback: {
+    value: function () {
+      if (!this.parentEl || this.isScene) { return; }
+      this.removeComponents();
+      this.parentEl.remove(this);
+    }
+  },
+
+  applyMixin: {
+    value: function (attr) {
+      var attrValue = this.getAttribute(attr);
+      if (!attr) {
+        this.updateComponents();
+        return;
+      }
+      this.updateComponent(attr, attrValue);
+    }
+  },
+
+  mapStateMixins: {
+    value: function (state, op) {
+      var mixins = this.getAttribute('mixin');
+      var mixinIds;
+      if (!mixins) { return; }
+      mixinIds = mixins.split(' ');
+      mixinIds.forEach(function (id) {
+        var mixinId = id + '-' + state;
+        op(mixinId);
+      });
+      this.updateComponents();
+    }
+  },
+
+  updateStateMixins: {
+    value: function (newMixins, oldMixins) {
+      var self = this;
+      oldMixins = oldMixins || '';
+      var newMixinsIds = newMixins.split(' ');
+      var oldMixinsIds = oldMixins ? oldMixins.split(' ') : [];
+      // The list of mixins that might have been removed on update
+      var diff = oldMixinsIds.filter(function (i) { return newMixinsIds.indexOf(i) < 0; });
+      // Remove the mixins that are gone on update
+      diff.forEach(function (mixinId) {
+        var forEach = Array.prototype.forEach;
+        // State Mixins
+        var stateMixinsEls = document.querySelectorAll('[id^=' + mixinId + '-]');
+        var stateMixinIds = [];
+        forEach.call(stateMixinsEls, function (el) { stateMixinIds.push(el.id); });
+        stateMixinIds.forEach(self.unregisterMixin.bind(self));
+      });
+      this.states.forEach(function (state) {
+        newMixinsIds.forEach(function (id) {
+          var mixinId = id + '-' + state;
+          self.registerMixin(mixinId);
+        });
+      });
+    }
+  },
+
+  add: {
+    value: function (el) {
+      if (!el.object3D) {
+        error("Trying to add an object3D that doesn't exist");
+      }
+      this.object3D.add(el.object3D);
+    }
+  },
+
+  addToParent: {
+    value: function () {
+      var self = this;
+      var parent = this.parentEl = this.parentNode;
+      var attachedToParent = this.attachedToParent;
+      if (!parent || attachedToParent) { return; }
+      if (isNode(parent)) {
+        attach();
+        return;
+      }
+      // If the parent isn't an `ANode` but eventually it will be
+      // when a templated element is created, we want to attach
+      // this element to the parent then.
+      parent.addEventListener('nodeready', attach);
+      function attach () {
+        // To prevent an object to attach itself multiple times to the parent.
+        self.attachedToParent = true;
+        if (parent.add) {
+          parent.add(self);
+        }
+      }
+    }
+  },
+
+  load: {
+    value: function () {
+      // To prevent calling load more than once
+      if (this.hasLoaded) { return; }
+      // Handle to the associated DOM element
+      this.object3D.el = this;
+      // It attaches itself to the threejs parent object3D
+      this.addToParent();
+      // Components initialization
+      this.updateComponents();
+      // Call the parent class
+      ANode.prototype.load.call(this);
+    },
+    writable: window.debug
+  },
+
+  remove: {
+    value: function (el) {
+      this.object3D.remove(el.object3D);
+    }
+  },
+
+  /**
+   * Check if a component is defined for an entity, including defaults and mixins.
+   *
+   * @param {string} name - Component name.
+   */
+  isComponentDefined: {
+    value: function (name) {
+      // If the defaults contain the component
+      var inDefaults = this.defaults[name];
+      // If the element contains the component
+      var inAttribute = this.hasAttribute(name);
+      if (inDefaults !== undefined || inAttribute) { return true; }
+      return this.isComponentMixedIn(name);
+    }
+  },
+
+  isComponentMixedIn: {
+    value: function (name) {
+      var i;
+      var inMixin = false;
+      var mixinEls = this.mixinEls;
+     // If any of the mixins contains the component
+      for (i = 0; i < mixinEls.length; ++i) {
+        inMixin = mixinEls[i].hasAttribute(name);
+        if (inMixin) { break; }
+      }
+      return inMixin;
+    }
+  },
+
+  initComponent: {
+    value: function (name, isDependency) {
+      var isComponentDefined;
+      // If it's not a component name or
+      // If the component is already initialized
+      if (!components[name] || this.components[name]) { return; }
+      isComponentDefined = this.isComponentDefined(name);
+      // If the component is not defined for the element
+      if (!isComponentDefined && !isDependency) { return; }
+      this.initComponentDependencies(name);
+      // If a component it's a dependency of another but it's not defined
+      // on the attribute, mixins or entity defaults
+      // we have to add it.
+      if (isDependency && !isComponentDefined) {
+        this.setAttribute(name, '');
+      } else {
+        this.components[name] = new components[name].Component(this);
+      }
+      log('Component initialized: %s', name);
+    }
+  },
+
+  initComponentDependencies: {
+    value: function (name) {
+      var self = this;
+      var component = components[name];
+      var dependencies;
+      // If the component doesn't exist
+      if (!component) { return; }
+      dependencies = components[name].dependencies;
+      if (!dependencies) { return; }
+      dependencies.forEach(function (component) {
+        self.initComponent(component, true);
+      });
+    }
+  },
+
+  removeComponents: {
+    value: function () {
+      var self = this;
+      var entityComponents = Object.keys(this.components);
+      entityComponents.forEach(removeComponent);
+      function removeComponent (name) {
+        self.components[name].remove();
+        delete self.components[name];
+      }
+    }
+  },
+
+  updateComponents: {
+    value: function () {
+      var self = this;
+      var entityComponents = Object.keys(components);
+      // Updates components
+      entityComponents.forEach(updateComponent);
+      function updateComponent (name) {
+        var elValue = self.getAttribute(name);
+        self.updateComponent(name, elValue);
+      }
+    }
+  },
+
+  /**
+   * Initialize, update, or remove a single component.
+   *
+   * When initializing, we set the component on `this.components`.
+   *
+   * @param {string} name - Component name.
+   * @param {object} newData - The new attributes assigned to the component
+   */
+  updateComponent: {
+    value: function (name, newData) {
+      var component = this.components[name];
+      var isDefault = name in this.defaults;
+      var isMixedIn = this.isComponentMixedIn(name);
+      if (component) {
+        // Attribute was removed. Remove component.
+        // 1. If the component is not defined in the defaults,
+        // mixins or element attribute
+        // 2. If the new data is null, it's not a default
+        // component and the component it's not defined via
+        // mixins
+        if (!this.isComponentDefined(name) ||
+            newData === null && !isDefault && !isMixedIn) {
+          component.remove();
+          delete this.components[name];
+          return;
+        }
+        if (typeof newData === 'string') {
+          newData = component.parse(newData);
+        }
+        // Component already initialized. Update component.
+        // TODO: update component attribute more granularly.
+        component.updateAttributes(newData);
+        return;
+      }
+      // Component not yet initialized. Initialize component.
+      this.initComponent(name);
+    }
+  },
+
+  /**
+   * If `attr` is a component name and `componentAttr` is not defined, removeAttribute removes
+   * the entire component from the entity.
+   *
+   * If `attr` is a component name and `componentAttr` is defined, removeAttribute removes a
+   * single attribute from the component.
+   *
+   * @param {string} attr - Attribute name, which could also be a component name.
+   * @param {string} componentAttr - Component attribute name.
+   */
+  removeAttribute: {
+    value: function (attr, componentAttr) {
+      var component = components[attr];
+      if (component) {
+        if (componentAttr) {
+          this.setAttribute(attr, componentAttr, undefined);
+        } else {
+          this.setEntityAttribute(attr, undefined, null);
+        }
+      }
+      HTMLElement.prototype.removeAttribute.call(this, attr);
+    }
+  },
+
+  /**
+   * Deals with updates on entity-specific attributes (i.e., components and mixins).
+   *
+   * @param {string} attr
+   * @param {string} oldVal
+   * @param {string|object} newVal
+   */
+  setEntityAttribute: {
+    value: function (attr, oldVal, newVal) {
+      var component = components[attr];
+      oldVal = oldVal || this.getAttribute(attr);
+      // When creating objects programatically and setting attributes, the object is not part
+      // of the scene until is inserted into the DOM.
+      if (!this.hasLoaded) { return; }
+      if (attr === 'mixin') {
+        this.updateStateMixins(newVal, oldVal);
+        this.updateComponents();
+        return;
+      }
+      if (component) { this.updateComponent(attr, newVal); }
+    }
+  },
+
+  /**
+   * If attribute is a component, setAttribute will apply the value to the
+   * existing component data, not replace it. Examples:
+   *
+   * Examples:
+   *
+   * setAttribute('id', 'my-element');
+   * setAttribute('material', { color: 'crimson' });
+   * setAttribute('material', 'color', 'crimson');
+   *
+   * @param {string} attr - Attribute name. setAttribute will initialize or update
+   *        a component if the name corresponds to a registered component.
+   * @param {string|object} value - If a string, setAttribute will update the attribute or.
+   *        component. If an object, the value will be mixed into the component.
+   * @param {string} componentAttrValue - If defined, `value` will act as the attribute
+   *        name and setAttribute will only set a single component attribute.
+   */
+  setAttribute: {
+    value: function (attr, value, componentAttrValue) {
+      var self = this;
+      var component = components[attr];
+      var partialComponentData;
+      value = value === undefined ? '' : value;
+      var valueStr = value;
+      var oldValue;
+      if (component) {
+        if (typeof value === 'string' && componentAttrValue !== undefined) {
+          // Update currently-defined component data with the new attribute value.
+          partialComponentData = self.getAttribute(attr) || {};
+          partialComponentData[value] = componentAttrValue;
+          value = partialComponentData;
+        }
+        valueStr = component.stringify(value);
+      }
+
+      oldValue = this.getAttribute(attr);
+      ANode.prototype.setAttribute.call(self, attr, valueStr);
+      self.setEntityAttribute(attr, oldValue, value);
+    },
+    writable: window.debug
+  },
+
+  /**
+   * If `attr` is a component, returns JUST the component data specified in the HTML
+   * by parsing the style-like string into an object. Like a partial version of
+   * `getComputedAttribute` as returned component data does not include applied mixins or
+   * defaults.
+   *
+   * If `attr` is not a component, fall back to HTML getAttribute.
+   *
+   * @param {string} attr
+   * @returns {object|string} Object if component, else string.
+   */
+  getAttribute: {
+    value: function (attr) {
+      var component = components[attr];
+      var value = HTMLElement.prototype.getAttribute.call(this, attr);
+      if (!component || typeof value !== 'string') { return value; }
+      return component.parse(value);
+    },
+    writable: window.debug
+  },
+
+  /**
+   * If `attr` is a component, returns ALL component data including applied mixins and
+   * defaults.
+   *
+   * If `attr` is not a component, fall back to HTML getAttribute.
+   *
+   * @param {string} attr
+   * @returns {object|string} Object if component, else string.
+   */
+  getComputedAttribute: {
+    value: function (attr) {
+      var component = this.components[attr];
+      if (component) { return component.getData(); }
+      return HTMLElement.prototype.getAttribute.call(this, attr);
+    }
+  },
+
+  addState: {
+    value: function (state) {
+      if (this.is(state)) { return; }
+      this.states.push(state);
+      this.mapStateMixins(state, this.registerMixin.bind(this));
+      this.emit('stateadded', {state: state});
+    }
+  },
+
+  removeState: {
+    value: function (state) {
+      var stateIndex = this.is(state);
+      if (stateIndex === false) { return; }
+      this.states.splice(stateIndex, 1);
+      this.mapStateMixins(state, this.unregisterMixin.bind(this));
+      this.emit('stateremoved', {state: state});
+    }
+  },
+
+  /**
+   * Checks if the element is in a given state. e.g. el.is('alive');
+   * @type {string} state - Name of the state we want to check
+   */
+  is: {
+    value: function (state) {
+      var is = false;
+      this.states.forEach(function (elState, index) {
+        if (elState === state) { is = index; }
+      });
+      return is;
+    }
+  }
+};
+
+module.exports = registerElement('a-entity', {
+  prototype: Object.create(ANode.prototype, proto)
+});
+
+},{"../../lib/three":2,"../utils/debug":42,"./a-node":35,"./a-register-element":36,"./component":38}],34:[function(require,module,exports){
+/* global HTMLElement */
+var AComponents = require('./component').components;
+var ANode = require('./a-node');
+var registerElement = require('./a-register-element').registerElement;
+
+module.exports = registerElement(
+  'a-mixin',
+  {
+    prototype: Object.create(
+      ANode.prototype,
+      {
+        attachedCallback: {
+          value: function () {
+            this.load();
+          },
+          writable: window.debug
+        },
+
+        setAttribute: {
+          value: function (attr, value) {
+            var component = AComponents[attr];
+            if (component && typeof value === 'object') {
+              value = component.stringify(value);
+            }
+            HTMLElement.prototype.setAttribute.call(this, attr, value);
+          },
+          writable: window.debug
+        },
+
+        getAttribute: {
+          value: function (attr) {
+            var component = AComponents[attr];
+            var value = HTMLElement.prototype.getAttribute.call(this, attr);
+            if (!component || typeof value !== 'string') { return value; }
+            return component.parse(value);
+          },
+          writable: window.debug
+        }
+      }
+    )
+  }
+);
+
+},{"./a-node":35,"./a-register-element":36,"./component":38}],35:[function(require,module,exports){
+/* global HTMLElement, MutationObserver */
+var registerElement = require('./a-register-element').registerElement;
+var utils = require('../utils/');
+
+/**
+ * Base class for A-Frame that manages loading of objects.
+ */
+module.exports = registerElement('a-node', {
+  prototype: Object.create(HTMLElement.prototype, {
+    createdCallback: {
+      value: function () {
+        this.isNode = true;
+        this.mixinEls = [];
+        this.mixinObservers = {};
+      }
+    },
+
+    attachedCallback: {
+      value: function () {
+        var mixins = this.getAttribute('mixin');
+        this.sceneEl = document.querySelector('a-scene');
+        this.emit('nodeready', {}, false);
+        if (mixins) { this.updateMixins(mixins); }
+      }
+    },
+
+    detachedCallback: {
+      value: function () { /* no-op */ }
+    },
+
+    attributeChangedCallback: {
+      value: function (attr, oldVal, newVal) {
+        if (attr === 'mixin') { this.updateMixins(newVal, oldVal); }
+      }
+    },
+
+    load: {
+      value: function () {
+        // To prevent emmitting the loaded event more than once
+        if (this.hasLoaded) { return; }
+        this.hasLoaded = true;
+        this.emit('loaded', {}, false);
+      }
+    },
+
+    updateMixins: {
+      value: function (newMixins, oldMixins) {
+        var newMixinsIds = newMixins.split(' ');
+        var oldMixinsIds = oldMixins ? oldMixins.split(' ') : [];
+        // To determine what listeners will be removed
+        var diff = oldMixinsIds.filter(function (i) { return newMixinsIds.indexOf(i) < 0; });
+        this.mixinEls = [];
+        diff.forEach(this.unregisterMixin.bind(this));
+        newMixinsIds.forEach(this.registerMixin.bind(this));
+      }
+    },
+
+    addMixin: {
+      value: function (mixinId) {
+        var mixins = this.getAttribute('mixin');
+        var mixinIds = mixins.split(' ');
+        var i;
+        for (i = 0; i < mixinIds.length; ++i) {
+          if (mixinIds[i] === mixinId) { return; }
+        }
+        mixinIds.push(mixinId);
+        this.setAttribute('mixin', mixinIds.join(' '));
+      }
+    },
+
+    removeMixin: {
+      value: function (mixinId) {
+        var mixins = this.getAttribute('mixin');
+        var mixinIds = mixins.split(' ');
+        var i;
+        for (i = 0; i < mixinIds.length; ++i) {
+          if (mixinIds[i] === mixinId) {
+            mixinIds.splice(i, 1);
+            this.setAttribute('mixin', mixinIds.join(' '));
+            return;
+          }
+        }
+      }
+    },
+
+    registerMixin: {
+      value: function (mixinId) {
+        var mixinEl = document.querySelector('a-mixin#' + mixinId);
+        if (!mixinEl) { return; }
+        this.attachMixinListener(mixinEl);
+        this.mixinEls.push(mixinEl);
+      }
+    },
+
+    setAttribute: {
+      value: function (attr, newValue) {
+        if (attr === 'mixin') { this.updateMixins(newValue); }
+        HTMLElement.prototype.setAttribute.call(this, attr, newValue);
+      }
+    },
+
+    unregisterMixin: {
+      value: function (mixinId) {
+        var mixinEls = this.mixinEls;
+        var mixinEl;
+        var i;
+        for (i = 0; i < mixinEls.length; ++i) {
+          mixinEl = mixinEls[i];
+          if (mixinId === mixinEl.id) {
+            mixinEls.splice(i, 1);
+            break;
+          }
+        }
+        this.removeMixinListener(mixinId);
+      }
+    },
+
+    removeMixinListener: {
+      value: function (mixinId) {
+        var observer = this.mixinObservers[mixinId];
+        if (!observer) { return; }
+        observer.disconnect();
+        this.mixinObservers[mixinId] = null;
+      }
+    },
+
+    attachMixinListener: {
+      value: function (mixinEl) {
+        var self = this;
+        var mixinId = mixinEl.id;
+        var currentObserver = this.mixinObservers[mixinId];
+        if (!mixinEl) { return; }
+        if (currentObserver) { return; }
+        var observer = new MutationObserver(function (mutations) {
+          var attr = mutations[0].attributeName;
+          self.applyMixin(attr);
+        });
+        var config = { attributes: true };
+        observer.observe(mixinEl, config);
+        this.mixinObservers[mixinId] = observer;
+      }
+    },
+
+    applyMixin: {
+      value: function () { /* no-op */ }
+    },
+
+    /**
+     * Emits a DOM event.
+     *
+     * @param {String} name
+     *   Name of event (use a space-delimited string for multiple events).
+     * @param {Object=} [detail={}]
+     *   Custom data to pass as `detail` to the event.
+     * @param {Boolean=} [bubbles=true]
+     *   Whether the event should bubble.
+     */
+    emit: {
+      value: function (name, detail, bubbles) {
+        var self = this;
+        detail = detail || {};
+        if (bubbles === undefined) { bubbles = true; }
+        var data = { bubbles: !!bubbles, detail: detail };
+        return name.split(' ').map(function (eventName) {
+          return utils.fireEvent(self, eventName, data);
+        });
+      }
+    },
+
+    /**
+     * Returns a closure that emits a DOM event.
+     *
+     * @param {String} name
+     *   Name of event (use a space-delimited string for multiple events).
+     * @param {Object} detail
+     *   Custom data (optional) to pass as `detail` if the event is to
+     *   be a `CustomEvent`.
+     * @param {Boolean} bubbles
+     *   Whether the event should be bubble.
+     */
+    emitter: {
+      value: function (name, detail, bubbles) {
+        var self = this;
+        return function () {
+          self.emit(name, detail, bubbles);
+        };
+      }
+    }
+  })
+});
+
+},{"../utils/":43,"./a-register-element":36}],36:[function(require,module,exports){
+// Polyfill `document.registerElement`.
+require('document-register-element');
+
+/*
+ ------------------------------------------------------------
+ ------------- WARNING WARNING WARNING WARNING --------------
+ ------------------------------------------------------------
+
+ This module wraps registerElement to deal with
+ components that inherit from `ANode` and `AEntity`.
+ It's a pass through in any other case.
+
+ It wraps some of the prototype methods
+ of the created element to make sure that the corresponding
+ functions in the base classes (`AEntity` and `ANode`) are also
+ invoked. The method in the base class is always called before the
+ one in the derived object.
+
+*/
+var registerElement = document.registerElement;
+
+var knownTags = module.exports.knownTags = {};
+
+var addTagName = function (tagName) {
+  knownTags[tagName.toLowerCase()] = true;
+};
+
+/**
+ * Returns whether the element type is one of our known registered ones
+ *
+ * @param   {string} node The name of the tag to register
+ * @returns {boolean} Whether the tag name matches that of our registered
+ *                    custom elements
+ */
+module.exports.isNode = function (node) {
+  return node.tagName.toLowerCase() in knownTags || node.isNode;
+};
+
+/**
+ * @param   {string} tagName The name of the tag to register
+ * @param   {object} obj The prototype of the new element
+ * @returns {object} The prototype of the new element
+ */
+module.exports.registerElement = document.registerElement = function (tagName, obj) {
+  var proto = Object.getPrototypeOf(obj.prototype);
+  var newObj = obj;
+  var isANode = ANode && proto === ANode.prototype;
+  var isAEntity = AEntity && proto === AEntity.prototype;
+
+  if (isANode || isAEntity) { addTagName(tagName); }
+
+  // Does the element inherit from `ANode`?
+  if (isANode) {
+    newObj = wrapANodeMethods(obj.prototype);
+    newObj = {prototype: Object.create(proto, newObj)};
+  }
+
+  // Does the element inherit from `AEntity`?
+  if (isAEntity) {
+    newObj = wrapAEntityMethods(obj.prototype);
+    newObj = {prototype: Object.create(proto, newObj)};
+  }
+
+  return registerElement.call(document, tagName, newObj);
+};
+
+/**
+ * This wraps some of the obj methods to call those on `ANode` base clase.
+ * @param  {object} obj The objects that contains the methods that will be wrapped.
+ * @return {object} An object with the same properties as the input parameter but
+ * with some of methods wrapped.
+ */
+function wrapANodeMethods (obj) {
+  var newObj = {};
+  var ANodeMethods = [
+    'attachedCallback',
+    'attributeChangedCallback',
+    'createdCallback'
+  ];
+  wrapMethods(newObj, ANodeMethods, obj, ANode.prototype);
+  copyProperties(obj, newObj);
+  return newObj;
+}
+
+/**
+ * This wraps some of the obj methods to call those on `AEntity` base class.
+ * @param  {object} obj The objects that contains the methods that will be wrapped.
+ * @return {object} An object with the same properties as the input parameter but
+ * with some of methods wrapped.
+ */
+function wrapAEntityMethods (obj) {
+  var newObj = {};
+  var ANodeMethods = [
+    'attachedCallback',
+    'attributeChangedCallback',
+    'createdCallback'
+  ];
+  var AEntityMethods = [
+    'attributeChangedCallback',
+    'attachedCallback',
+    'createdCallback',
+    'detachedCallback'
+  ];
+  wrapMethods(newObj, ANodeMethods, obj, ANode.prototype);
+  wrapMethods(newObj, AEntityMethods, obj, AEntity.prototype);
+  // Copies the remaining properties into the new object
+  copyProperties(obj, newObj);
+  return newObj;
+}
+
+/**
+ * Wraps a list a methods to ensure that those in the base class are called through the derived one.
+ * @param  {object} targetObj Object that will contain the wrapped methods
+ * @param  {array} methodList List of methods from the derivedObj that will be wrapped
+ * @param  {object} derivedObject Object that inherits from the baseObj
+ * @param  {object} baseObj Object that derivedObj inherits from
+ * @return {undefined}
+ */
+function wrapMethods (targetObj, methodList, derivedObj, baseObj) {
+  methodList.forEach(function (methodName) {
+    wrapMethod(targetObj, methodName, derivedObj, baseObj);
+  });
+}
+
+/**
+ * Wraps one method to ensure that the one in the base class is called before the one
+ * in the derived one
+ * @param  {object} obj Object that will contain the wrapped method
+ * @param  {string} methodName The name of the method that will be wrapped
+ * @param  {object} derivedObject Object that inherits from the baseObj
+ * @param  {object} baseObj Object that derivedObj inherits from
+ * @return {undefined}
+ */
+function wrapMethod (obj, methodName, derivedObj, baseObj) {
+  var derivedMethod = derivedObj[methodName];
+  var baseMethod = baseObj[methodName];
+  if (!derivedMethod || !baseMethod) { return; }
+  // The derived class doesn't override the one in the base one
+  if (derivedMethod === baseMethod) { return; }
+  // Wrapper
+  // The base method is called before the one in the derived class
+  var wrapperMethod = function () {
+    baseMethod.apply(this, arguments);
+    return derivedMethod.apply(this, arguments);
+  };
+  obj[methodName] = {value: wrapperMethod, writable: window.debug};
+}
+
+/**
+ * It copies the properties from source to destination object
+ * if they don't exist already
+ * @param  {object} source The object where properties are copied from
+ * @param  {type} destination The object where properties are copied to
+ * @return {undefined}
+ */
+function copyProperties (source, destination) {
+  var props = Object.getOwnPropertyNames(source);
+  props.forEach(function (prop) {
+    var desc;
+    if (!destination[prop]) {
+      desc = Object.getOwnPropertyDescriptor(source, prop);
+      destination[prop] = {value: source[prop], writable: desc.writable};
+    }
+  });
+}
+
+var ANode = require('./a-node');
+var AEntity = require('./a-entity');
+
+},{"./a-entity":33,"./a-node":35,"document-register-element":85}],37:[function(require,module,exports){
+/* global MessageChannel, Promise */
+var re = require('./a-register-element');
+var RStats = require('../../lib/vendor/rStats');
+var THREE = require('../../lib/three');
+var TWEEN = require('tween.js');
+var utils = require('../utils/');
+var AEntity = require('./a-entity');
+var Wakelock = require('../../lib/vendor/wakelock/wakelock');
+
+var dummyDolly = new THREE.Object3D();
+var controls = new THREE.VRControls(dummyDolly);
+var isNode = re.isNode;
+var DEFAULT_CAMERA_ATTR = 'data-aframe-default-camera';
+var DEFAULT_LIGHT_ATTR = 'data-aframe-default-light';
+var HIDDEN_CLASS = 'a-hidden';
+var registerElement = re.registerElement;
+var ENTER_VR_CLASS = 'a-enter-vr';
+var ENTER_VR_NO_HEADSET = 'data-a-enter-vr-no-headset';
+var ENTER_VR_NO_WEBVR = 'data-a-enter-vr-no-webvr';
+var ENTER_VR_BTN_CLASS = 'a-enter-vr-button';
+var ENTER_VR_MODAL_CLASS = 'a-enter-vr-modal';
+var ORIENTATION_MODAL_CLASS = 'a-orientation-modal';
+var isMobile = utils.isMobile();
+
+/**
+ * Scene element, holds all entities.
+ *
+ * @member {number} animationFrameID
+ * @member {array} behaviors - Component instances that have registered themselves to be
+           updated on every tick.
+ * @member {object} cameraEl - Set the entity with a camera component.
+ * @member {object} canvas
+ * @member {bool} defaultLightsEnabled - false if user has not added lights.
+ * @member {Element} enterVREl
+ * @member {bool} insideIframe
+ * @member {bool} insideLoader
+ * @member {bool} isScene - Differentiates this as a scene entity as opposed
+           to other `AEntity`s.
+ * @member {bool} isMobile - Whether browser is mobile (via UA detection).
+ * @member {object} object3D - The root three.js Scene object.
+ * @member {object} monoRenderer
+ * @member {number} pendingElements - Number of elements currently waiting to
+ *         initialize before beginning rendering.
+ * @member {object} renderer
+ * @member {bool} renderLoopStarted
+ * @member {object} stats
+ * @member {object} stereoRenderer
+ * @member {object} wakelock
+ */
+var AScene = module.exports = registerElement('a-scene', {
+  prototype: Object.create(AEntity.prototype, {
+    createdCallback: {
+      value: function () {
+        this.behaviors = [];
+        this.defaultLightsEnabled = true;
+        this.enterVREl = null;
+        this.insideIframe = window.top !== window.self;
+        this.insideLoader = false;
+        this.isScene = true;
+        this.materials = {};
+        this.object3D = AScene.scene || new THREE.Scene();
+
+        AScene.scene = this.object3D;
+      }
+    },
+
+    attachedCallback: {
+      value: function () {
+        this.isMobile = isMobile;
+        var resizeCanvas = this.resizeCanvas.bind(this);
+
+        if (isMobile) {
+          injectMetaTags();
+          this.wakelock = new Wakelock();
+        }
+
+        this.setupStats();
+        this.setupCanvas();
+        this.setupKeyboardShortcuts();
+        this.setupRenderer();
+        this.setupDefaultLights();
+        this.attachEventListeners();
+        this.attachFullscreenListeners();
+        this.attachOrientationListeners();
+
+        // For Chrome (https://github.com/aframevr/aframe-core/issues/321).
+        window.addEventListener('load', resizeCanvas);
+      },
+      writable: window.debug
+    },
+
+    /**
+     * Handle stats.
+     * TODO: move stats to a component.
+     */
+    attributeChangedCallback: {
+      value: function (attr, oldVal, newVal) {
+        if (oldVal === newVal) { return; }
+        if (attr === 'stats') { this.setupStats(); }
+      }
+    },
+
+    /**
+     * Shuts down scene on detach.
+     */
+    detachedCallback: {
+      value: function () {
+        window.cancelAnimationFrame(this.animationFrameID);
+        this.animationFrameID = null;
+      }
+    },
+
+    /**
+     * @param {object} behavior - Generally a component. Must implement a .update() method to
+     *        be called on every tick.
+     */
+    addBehavior: {
+      value: function (behavior) {
+        this.behaviors.push(behavior);
+      }
+    },
+
+    /**
+     * Attaches event listeners to all assets and entities and wait for them
+     * all to load before kicking things off.
+     */
+    attachEventListeners: {
+      value: function () {
+        var self = this;
+        var elementLoadedCallback = this.elementLoadedCallback.bind(this);
+        this.pendingElements = 0;
+        var assets = document.querySelector('a-assets');
+        if (assets && !assets.hasLoaded) {
+          this.pendingElements++;
+          attachEventListener(assets);
+        }
+
+        var children = this.querySelectorAll('*');
+        Array.prototype.slice.call(children).forEach(countElement);
+
+        function countElement (node) {
+          if (!isNode(node)) { return; }
+          self.pendingElements++;
+          if (!node.hasLoaded) {
+            attachEventListener(node);
+          } else {
+            elementLoadedCallback(node);
+          }
+        }
+
+        function attachEventListener (node) {
+          node.addEventListener('loaded', elementLoadedCallback);
+        }
+      }
+    },
+
+    attachOrientationListeners: {
+      value: function (e) {
+        window.addEventListener('orientationchange', this.showOrientationModal.bind(this));
+      }
+    },
+
+    showOrientationModal: {
+      value: function () {
+        if (!utils.isIOS()) { return; }
+        if (!utils.isLandscape() && this.renderer === this.stereoRenderer) {
+          this.orientationModal.classList.remove(HIDDEN_CLASS);
+        } else {
+          this.orientationModal.classList.add(HIDDEN_CLASS);
+        }
+      }
+    },
+
+    /**
+     * Switch back to mono renderer if no longer in fullscreen VR.
+     * Lock to landscape orientation on mobile when fullscreen.
+     */
+    attachFullscreenListeners: {
+      value: function () {
+        function fullscreenChange (e) {
+          var fsElement = document.fullscreenElement ||
+                          document.mozFullScreenElement ||
+                          document.webkitFullscreenElement;
+          // Lock to landscape orientation on mobile.
+          if (fsElement && this.isMobile) {
+            window.screen.orientation.lock('landscape');
+          } else {
+            window.screen.orientation.unlock();
+          }
+          if (!fsElement) {
+            this.showUI();
+            this.setMonoRenderer();
+          }
+          if (this.wakelock) { this.wakelock.release(); }
+        }
+        document.addEventListener('mozfullscreenchange',
+                                  fullscreenChange.bind(this));
+        document.addEventListener('webkitfullscreenchange',
+                                  fullscreenChange.bind(this));
+      }
+    },
+
+    /**
+     * Handles VR and fullscreen behavior for when we are inside an iframe.
+     */
+    attachMessageListeners: {
+      value: function () {
+        var self = this;
+        window.addEventListener('message', function (e) {
+          if (e.data) {
+            switch (e.data.type) {
+              case 'loaderReady': {
+                self.insideLoader = true;
+                self.removeEnterVRButton();
+                break;
+              }
+              case 'fullscreen': {
+                switch (e.data.data) {
+                  // Set renderer with fullscreen VR enter and exit.
+                  case 'enter':
+                    self.setStereoRenderer();
+                    break;
+                  case 'exit':
+                    self.setMonoRenderer();
+                    break;
+                }
+              }
+            }
+          }
+        });
+      }
+    },
+
+    /**
+     * Handler attached to elements to help scene know when to kick off.
+     * Scene waits for all entities to load.
+     */
+    elementLoadedCallback: {
+      value: function () {
+        this.pendingElements--;
+        // Still waiting on elements.
+        if (this.pendingElements > 0) { return; }
+        // Render loop already running.
+        if (this.renderLoopStarted) { return; }
+
+        this.setupLoader();
+        if (!this.cameraEl) {
+          // Add default camera if user has not added one. Wait for it to load.
+          this.setupDefaultCamera();
+          return;
+        }
+        this.resizeCanvas();
+
+        // Kick off render loop.
+        this.render();
+        this.renderLoopStarted = true;
+        this.load();
+        this.checkUrlParameters();
+      }
+    },
+
+    /**
+     * Enters VR when ?mode=vr is specified in the querystring.
+     */
+    checkUrlParameters: {
+      value: function () {
+        var mode = utils.getUrlParameter('mode');
+        if (mode === 'vr') {
+          this.enterVR();
+        }
+
+        var ui = utils.getUrlParameter('ui');
+        if (ui === 'false') {
+          this.hideUI();
+        }
+      }
+    },
+
+    enterVR: {
+      value: function () {
+        this.hideUI();
+        this.setStereoRenderer();
+        this.setFullscreen();
+        this.showOrientationModal();
+      }
+    },
+
+    exitVR: {
+      value: function () {
+        this.showUI();
+        this.setMonoRenderer();
+        this.orientationModal.classList.add(HIDDEN_CLASS);
+      }
+    },
+
+    getCanvasSize: {
+      value: function () {
+        var canvas = this.canvas;
+        if (this.isMobile) {
+          return {
+            height: window.innerHeight,
+            width: window.innerWidth
+          };
+        }
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        return {
+          height: canvas.offsetHeight,
+          width: canvas.offsetWidth
+        };
+      }
+    },
+
+    hideUI: {
+      value: function () {
+        if (this.statsEl) {
+          this.statsEl.classList.add(HIDDEN_CLASS);
+        }
+        if (this.enterVREl) {
+          this.enterVREl.classList.add(HIDDEN_CLASS);
+        }
+      }
+    },
+
+    load: {
+      value: function () {
+        // To prevent emmitting the loaded event more than once
+        // and to prevent triggering loaded if there are still
+        // pending elements to be loaded
+        if (this.hasLoaded || this.pendingElements !== 0) { return; }
+        AEntity.prototype.load.call(this);
+      }
+    },
+
+    /**
+     * Notify scene that light has been added and to remove the default
+     *
+     * @param {object} el - element holding the light component.
+     */
+    registerLight: {
+      value: function (el) {
+        if (this.defaultLightsEnabled &&
+            !el.hasAttribute(DEFAULT_LIGHT_ATTR)) {
+          // User added a light, remove default lights through DOM.
+          var defaultLights = document.querySelectorAll(
+            '[' + DEFAULT_LIGHT_ATTR + ']');
+          for (var i = 0; i < defaultLights.length; i++) {
+            this.removeChild(defaultLights[i]);
+          }
+          this.defaultLightsEnabled = false;
+        }
+      }
+    },
+
+    /**
+     * Keep track of material in case an update trigger is needed (e.g., fog).
+     *
+     * @param {object} material
+     */
+    registerMaterial: {
+      value: function (material) {
+        this.materials[material.uuid] = material;
+      }
+    },
+
+    /**
+     * @param {object} behavior - Generally a component. Has registered itself to behaviors.
+     */
+    removeBehavior: {
+      value: function (behavior) {
+        var behaviors = this.behaviors;
+        var index = behaviors.indexOf(behavior);
+        if (index === -1) { return; }
+        behaviors.splice(index, 1);
+      }
+    },
+
+    removeEnterVR: {
+      value: function () {
+        if (this.enterVREl) {
+          this.enterVREl.parentNode.removeChild(this.enterVRElement);
+        }
+      }
+    },
+
+    resizeCanvas: {
+      value: function () {
+        // It's possible that the camera is not injected yet.
+        if (!this.cameraEl) { return; }
+        var camera = this.cameraEl.components.camera.camera;
+        var size = this.getCanvasSize();
+        // Updates camera
+        camera.aspect = size.width / size.height;
+        camera.updateProjectionMatrix();
+        // Notify the renderer of the size change
+        this.renderer.setSize(size.width, size.height, true);
+      }
+    },
+
+    /**
+     * Manually handles fullscreen for non-VR mobile where the renderer' VR
+     * display is not polyfilled. Also sets wakelock for mobile in the process.
+     *
+     * Desktop just works so use the renderer.setFullScreen in that case.
+     */
+    setFullscreen: {
+      value: function () {
+        var canvas = this.canvas;
+
+        if (!this.isMobile) {
+          this.stereoRenderer.setFullScreen(true);
+          return;
+        }
+
+        if (this.wakelock) { this.wakelock.request(); }
+
+        if (canvas.requestFullscreen) {
+          canvas.requestFullscreen();
+        } else if (canvas.mozRequestFullScreen) {
+          canvas.mozRequestFullScreen();
+        } else if (canvas.webkitRequestFullscreen) {
+          canvas.webkitRequestFullscreen();
+        }
+      }
+    },
+
+    /**
+     * Sets renderer to mono (one eye) and resizes canvas.
+     */
+    setMonoRenderer: {
+      value: function () {
+        this.renderer = this.monoRenderer;
+        this.resizeCanvas();
+      }
+    },
+
+    /**
+     * Sets renderer to stereo (two eyes) and resizes canvas.
+     */
+    setStereoRenderer: {
+      value: function () {
+        this.renderer = this.stereoRenderer;
+        this.resizeCanvas();
+      }
+    },
+
+    setupCanvas: {
+      value: function () {
+        var canvas = this.canvas = document.createElement('canvas');
+        canvas.classList.add('a-canvas');
+        // Prevents overscroll on mobile devices.
+        canvas.addEventListener('touchmove', function (evt) {
+          evt.preventDefault();
+        });
+        document.body.appendChild(canvas);
+        window.addEventListener('resize', this.resizeCanvas.bind(this), false);
+      }
+    },
+
+    /**
+     * Creates a default camera if user has not added one during the initial.
+     * scene traversal.
+     *
+     * Default camera height is at human level (~1.8m) and back such that
+     * entities at the origin (0, 0, 0) are well-centered.
+     */
+    setupDefaultCamera: {
+      value: function () {
+        var cameraWrapperEl;
+        var defaultCamera;
+
+        if (this.cameraEl) { return; }
+
+        // DOM calls to create camera.
+        cameraWrapperEl = document.createElement('a-entity');
+        cameraWrapperEl.setAttribute('position', {x: 0, y: 1.8, z: 4});
+        cameraWrapperEl.setAttribute(DEFAULT_CAMERA_ATTR, '');
+        defaultCamera = document.createElement('a-entity');
+        defaultCamera.setAttribute('camera');
+        defaultCamera.setAttribute('wasd-controls');
+        defaultCamera.setAttribute('look-controls');
+        this.pendingElements++;
+        defaultCamera.addEventListener('loaded',
+                                       this.elementLoadedCallback.bind(this));
+        cameraWrapperEl.appendChild(defaultCamera);
+        this.appendChild(cameraWrapperEl);
+      }
+    },
+
+    /**
+     * Prescibe default lights to the scene.
+     * Does so by injecting markup such that this state is not invisible.
+     * These lights are removed if the user adds any lights.
+     */
+    setupDefaultLights: {
+      value: function () {
+        var ambientLight = document.createElement('a-entity');
+        ambientLight.setAttribute('light',
+                                  {color: '#fff', type: 'ambient'});
+        ambientLight.setAttribute(DEFAULT_LIGHT_ATTR, '');
+        this.appendChild(ambientLight);
+
+        var directionalLight = document.createElement('a-entity');
+        directionalLight.setAttribute('light', { color: '#fff', intensity: 0.2 });
+        directionalLight.setAttribute('position', { x: -1, y: 2, z: 1 });
+        directionalLight.setAttribute(DEFAULT_LIGHT_ATTR, '');
+        this.appendChild(directionalLight);
+      }
+    },
+
+    setupEnterVR: {
+      value: function () {
+        if (this.enterVREl) { return; }
+        this.enterVREl = createEnterVR(this.enterVR.bind(this));
+        document.body.appendChild(this.enterVREl);
+      }
+    },
+
+    setupOrientationModal: {
+      value: function () {
+        var modal = this.orientationModal = document.createElement('div');
+        modal.className = ORIENTATION_MODAL_CLASS;
+        modal.classList.add(HIDDEN_CLASS);
+
+        var exit = document.createElement('button');
+        exit.innerHTML = 'Exit VR';
+        exit.addEventListener('click', this.exitVR.bind(this));
+        modal.appendChild(exit);
+
+        document.body.appendChild(modal);
+      }
+    },
+
+    /**
+     * Set up keyboard shortcuts to:
+     *   - Enter VR when `f` is pressed.
+     *   - Reset sensor when `z` is pressed.
+     */
+    setupKeyboardShortcuts: {
+      value: function () {
+        var self = this;
+        window.addEventListener('keyup', function (event) {
+          if (event.keyCode === 70) {  // f.
+            self.enterVR();
+          }
+          if (event.keyCode === 90) {  // z.
+            controls.resetSensor();
+          }
+        }, false);
+      }
+    },
+
+    /**
+     * Checks for VR mode before kicking off render loop.
+     */
+    setupLoader: {
+      value: function () {
+        var self = this;
+
+        if (self.insideIframe) {
+          self.attachMessageListeners();
+          self.vrLoaderMode().then(function (isVr) {
+            if (isVr) {
+              self.setStereoRenderer();
+            } else {
+              self.setMonoRenderer();
+            }
+            window.top.postMessage({type: 'ready'}, '*');
+          });
+        }
+        if (!self.insideLoader) {
+          self.setupEnterVR();
+          self.setupOrientationModal();
+        }
+      }
+    },
+
+    setupRenderer: {
+      value: function () {
+        var canvas = this.canvas;
+        // Set at startup. To enable/disable antialias
+        // at runttime we would have to recreate the whole context
+        var antialias = this.getAttribute('antialias') === 'true';
+        var renderer = this.renderer = this.monoRenderer =
+          (AScene && AScene.renderer) ||
+          // To prevent creating multiple rendering contexts.
+          new THREE.WebGLRenderer({
+            canvas: canvas,
+            antialias: antialias,
+            alpha: true
+          });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.sortObjects = false;
+        AScene.renderer = renderer;
+        this.stereoRenderer = new THREE.VREffect(renderer);
+      },
+      writable: window.debug
+    },
+
+    /**
+     * TODO: move stats to component.
+     */
+    setupStats: {
+      value: function () {
+        var statsEnabled = this.getAttribute('stats') === 'true';
+        var statsEl = this.statsEl = document.querySelector('.rs-base');
+        if (!statsEnabled) {
+          if (statsEl) { statsEl.classList.add(HIDDEN_CLASS); }
+          return;
+        }
+        if (statsEl) { statsEl.classList.remove(HIDDEN_CLASS); }
+        if (this.stats) { return; }
+        this.stats = new RStats({
+          CSSPath: '../../style/',
+          values: {
+            fps: { caption: 'fps', below: 30 }
+          },
+          groups: [
+            { caption: 'Framerate', values: [ 'fps', 'raf' ] }
+          ]
+        });
+        this.statsEl = document.querySelector('.rs-base');
+      }
+    },
+
+    showUI: {
+      value: function () {
+        var statsEnabled = this.getAttribute('stats') === 'true';
+        if (statsEnabled) {
+          this.statsEl.classList.remove(HIDDEN_CLASS);
+        }
+        if (this.enterVREl) {
+          this.enterVREl.classList.remove(HIDDEN_CLASS);
+        }
+      }
+    },
+
+    /**
+     * Stops tracking material.
+     *
+     * @param {object} material
+     */
+    unregisterMaterial: {
+      value: function (material) {
+        delete this.materials[material.uuid];
+      }
+    },
+
+    /**
+     * Trigger update to all registered materials.
+     */
+    updateMaterials: {
+      value: function (material) {
+        var materials = this.materials;
+        Object.keys(materials).forEach(function (uuid) {
+          materials[uuid].needsUpdate = true;
+        });
+      },
+      writable: window.debug
+    },
+
+    /**
+     * @returns {object} Promise that resolves a bool whether loader is in VR
+     *          mode.
+     */
+    vrLoaderMode: {
+      value: function () {
+        return new Promise(function (resolve) {
+          var channel = new MessageChannel();
+          window.top.postMessage({type: 'checkVr'}, '*', [channel.port2]);
+          channel.port1.onmessage = function (message) {
+            resolve(!!message.data.data.isVr);
+          };
+        });
+      }
+    },
+
+    /**
+     * The render loop.
+     *
+     * Updates stats.
+     * Updates animations.
+     * Updates behaviors.
+     * Renders with request animation frame.
+     */
+    render: {
+      value: function (t) {
+        var camera = this.cameraEl.components.camera.camera;
+        var stats = this.stats;
+
+        if (stats) {
+          stats('rAF').tick();
+          stats('FPS').frame();
+        }
+        TWEEN.update(t);
+        this.behaviors.forEach(function (behavior) {
+          behavior.update();
+        });
+        this.renderer.render(this.object3D, camera);
+        if (stats) { stats().update(); }
+        this.animationFrameID = window.requestAnimationFrame(
+          this.render.bind(this));
+      }
+    }
+  })
+});
+
+/**
+ * Creates Enter VR flow (button and compatibility modal).
+ *
+ * Creates a button that when clicked will enter into stereo-rendering mode for VR.
+ *
+ * For compatibility:
+ *   - Mobile always has compatibility via polyfill.
+ *   - If desktop browser does not have WebVR excluding polyfill, disable button, show modal.
+ *   - If desktop browser has WebVR excluding polyfill but not headset connected,
+ *     don't disable button, but show modal.
+ *   - If desktop browser has WebVR excluding polyfill and has headset connected, then
+ *     then no modal.
+ *
+ * Structure: <div><modal/><button></div>
+ *
+ * @returns {Element} Wrapper <div>.
+ */
+function createEnterVR (enterVRHandler) {
+  var compatModal;
+  var compatModalLink;
+  var compatModalText;
+  // window.hasNativeVRSupport is set in src/aframe-core.js.
+  var hasWebVR = isMobile || window.hasNonPolyfillWebVRSupport;
+  var orientation;
+  var vrButton;
+  var wrapper;
+
+  // Create elements.
+  wrapper = document.createElement('div');
+  wrapper.classList.add(ENTER_VR_CLASS);
+  compatModal = document.createElement('div');
+  compatModal.className = ENTER_VR_MODAL_CLASS;
+  compatModalText = document.createElement('p');
+  compatModalLink = document.createElement('a');
+  compatModalLink.setAttribute('href', 'http://mozvr.com/#start');
+  compatModalLink.setAttribute('target', '_blank');
+  compatModalLink.innerHTML = 'Learn more.';
+  vrButton = document.createElement('button');
+  vrButton.className = ENTER_VR_BTN_CLASS;
+
+  // Insert elements.
+  if (compatModal) {
+    compatModal.appendChild(compatModalText);
+    compatModal.appendChild(compatModalLink);
+    wrapper.appendChild(compatModal);
+  }
+  wrapper.appendChild(vrButton);
+
+  if (!checkHeadsetConnected() && !isMobile) {
+    compatModalText.innerHTML = 'Your browser supports WebVR. To enter VR, connect a headset, or use a mobile phone.';
+    wrapper.setAttribute(ENTER_VR_NO_HEADSET, '');
+  }
+
+  // Handle enter VR flows.
+  if (!hasWebVR) {
+    compatModalText.innerHTML = 'Your browser does not support WebVR. To enter VR, use a VR-compatible browser, or a mobile phone.';
+    wrapper.setAttribute(ENTER_VR_NO_WEBVR, '');
+  } else {
+    vrButton.addEventListener('click', enterVRHandler);
+  }
+  return wrapper;
+
+  /**
+   * Check for headset connection by looking at orientation {0 0 0}.
+   */
+  function checkHeadsetConnected () {
+    controls.update();
+    orientation = dummyDolly.quaternion;
+    if (orientation._x !== 0 || orientation._y !== 0 || orientation._z !== 0) {
+      return true;
+    }
+  }
+}
+
+/**
+ * Injects the necessary metatags in the document for mobile support to:
+ * 1. Prevent the user to zoom in the document
+ * 2. Ensure that window.innerWidth and window.innerHeight have the correct
+ *    values and the canvas is properly scaled
+ * 3. To allow fullscreen mode when pinning a web app on the home screen on
+ *    iOS.
+ * Adapted from: https://www.reddit.com/r/web_design/comments/3la04p/
+ *
+ * @type {Object}
+ */
+function injectMetaTags () {
+  var headEl;
+  var meta = document.querySelector('meta[name="viewport"]');
+  if (meta) { return; }  // Already exists.
+
+  headEl = document.getElementsByTagName('head')[0];
+  meta = document.createElement('meta');
+  meta.name = 'viewport';
+  meta.content =
+    'width=device-width,initial-scale=1,shrink-to-fit=no,user-scalable=no';
+  headEl.appendChild(meta);
+
+  // iOS-specific meta tags for fullscreen when pinning to homescreen.
+  meta = document.createElement('meta');
+  meta.name = 'apple-mobile-web-app-capable';
+  meta.content = 'yes';
+  headEl.appendChild(meta);
+
+  meta = document.createElement('meta');
+  meta.name = 'apple-mobile-web-app-status-bar-style';
+  meta.content = 'black';
+  headEl.appendChild(meta);
+}
+
+},{"../../lib/three":2,"../../lib/vendor/rStats":8,"../../lib/vendor/wakelock/wakelock":10,"../utils/":43,"./a-entity":33,"./a-register-element":36,"tween.js":95}],38:[function(require,module,exports){
+var debug = require('../utils/debug');
+var styleParser = require('style-attr');
+var utils = require('../utils/');
+
+var components = module.exports.components = {};  // Keep track of registered components.
+var error = debug('core:register-component:error');
+
+/**
+ * Component class definition.
+ *
+ * Components configure appearance, modify behavior, or add functionality to
+ * entities. The behavior and appearance of an entity can be changed at runtime
+ * by adding, removing, or updating components. Entities do not share instances
+ * of components.
+ *
+ * @namespace Component
+ * @property {object} data - Stores component data, populated by parsing the
+ *           attribute name of the component plus applying defaults and mixins.
+ * @property {object} el - Reference to the entity element.
+ * @property {string} name - Name of the attribute the component is connected
+ *           to.
+ * @member {Element} el
+ * @member {object} data
+ * @member {function} getData
+ * @member {function} init
+ * @member {function} update
+ * @member {function} remove
+ * @member {function} parse
+ * @member {function} stringify
+ */
+var Component = module.exports.Component = function (el) {
+  var attrs = el.getAttribute(this.name);
+  this.el = el;
+  this.data = {};
+  this.parseAttributes(attrs);
+  this.init();
+  this.update();
+};
+
+Component.prototype = {
+  /**
+   * Contains the type schema and defaults for the data values.
+   * Data is coerced into the types of the values of the defaults.
+   */
+  schema: {},
+
+  /**
+   * Init handler. Similar to attachedCallback.
+   * Called during component initialization and is only run once.
+   * Components can use this to set initial state.
+   */
+  init: function () { /* no-op */ },
+
+  /**
+   * Update handler. Similar to attributeChangedCallback.
+   * Called whenever component's data changes.
+   * Also called on component initialization when the component receives initial data.
+   *
+   * @param {object} previousData - Previous attributes of the component.
+   */
+  update: function (previousData) { /* no-op */ },
+
+  /**
+   * Remove handler. Similar to detachedCallback.
+   * Called whenever component is removed from the entity (i.e., removeAttribute).
+   * Components can use this to reset behavior on the entity.
+   */
+  remove: function () { /* no-op */ },
+
+  /**
+   * Describes how the component should deserialize HTML attribute into data.
+   * Can be overridden by the component.
+   *
+   * The default parsing is parsing style-like strings, camelCasing keys for
+   * error-tolerance (`max-value` ~= `maxValue`).
+   *
+   * @param {string} value - HTML attribute.
+   * @returns {object} Data.
+   */
+  parse: function (value) {
+    if (typeof value !== 'string') { return value; }
+    return transformKeysToCamelCase(styleParser.parse(value));
+  },
+
+  /**
+   * Describes how the component should serialize data to a string to update the DOM.
+   * Can be overridden by the component.
+   *
+   * The default stringify is to a style-like string.
+   *
+   * @param {object} data
+   * @returns {string}
+   */
+  stringify: function (data) {
+    if (typeof data !== 'object') { return data; }
+    return styleParser.stringify(data);
+  },
+
+  /**
+   * Returns a copy of data such that we don't expose the private this.data.
+   *
+   * @returns {object} data
+   */
+  getData: function () {
+    var data = this.data;
+    if (typeof data !== 'object') { return data; }
+    return utils.extend({}, data);
+  },
+
+  /**
+   * Called when new data is coming from the entity (e.g., attributeChangedCb)
+   * or from its mixins. Does some parsing and applying before updating the
+   * component.
+   * Does not update if data has not changed.
+   */
+  updateAttributes: function (newData) {
+    var previousData = extendWithCheck({}, this.data);
+    this.parseAttributes(newData);
+    // Don't update if properties haven't changed
+    if (utils.deepEqual(previousData, this.data)) { return; }
+    this.update(previousData);
+    this.el.emit('componentchanged', {
+      name: this.name,
+      newData: this.getData(),
+      oldData: previousData
+    });
+  },
+
+  /**
+   * Builds component data from the current state of the entity, ultimately
+   * updating this.data.
+   *
+   * If the component was detached completely, set data to null.
+   *
+   * Precedence:
+   * 1. Defaults data
+   * 2. Mixin data.
+   * 3. Attribute data.
+   * Finally coerce the data to the types of the defaults.
+   */
+  parseAttributes: function (newData) {
+    var self = this;
+    var data = {};
+    var schema = self.schema;
+    var el = self.el;
+    var mixinEls = el.mixinEls;
+    var name = self.name;
+
+    // 1. Default values (lowest precendence).
+    Object.keys(schema).forEach(applyDefault);
+    function applyDefault (key) {
+      data[key] = schema[key].default;
+    }
+
+    // 2. Mixin values.
+    mixinEls.forEach(applyMixin);
+    function applyMixin (mixinEl) {
+      var mixinData = mixinEl.getAttribute(name);
+      data = extendWithCheck(data, mixinData);
+    }
+
+    // 3. Attribute values (highest precendence).
+    data = extendWithCheck(data, newData);
+
+    // Coerce to the type of the defaults.
+    this.data = utils.coerce(data, schema);
+  }
+};
+
+/**
+ * Registers a component to A-Frame.
+ *
+ * @param {string} name - Component name.
+ * @param {object} definition - Component property and methods.
+ * @returns {object} Component.
+ */
+module.exports.registerComponent = function (name, definition) {
+  var NewComponent;
+  var proto = {};
+
+  // Format definition object to prototype object.
+  Object.keys(definition).forEach(function (key) {
+    proto[key] = {
+      value: definition[key],
+      writable: window.debug
+    };
+  });
+
+  if (components[name]) {
+    error('The component "' + name + '" has been already registered');
+  }
+  NewComponent = function (el) {
+    Component.call(this, el);
+  };
+  NewComponent.prototype = Object.create(Component.prototype, proto);
+  NewComponent.prototype.name = name;
+  NewComponent.prototype.constructor = NewComponent;
+  components[name] = {
+    Component: NewComponent,
+    dependencies: NewComponent.prototype.dependencies,
+    parse: NewComponent.prototype.parse.bind(NewComponent.prototype),
+    schema: NewComponent.prototype.schema,
+    stringify: NewComponent.prototype.stringify.bind(NewComponent.prototype)
+  };
+  return NewComponent;
+};
+
+/**
+* Object extending, but checks if `source` is an object first.
+* If not, `source` is a primitive and we don't do any extending.
+*
+* @param dest - Destination object or value.
+* @param source - Source object or value
+* @returns Overridden object or value.
+*/
+function extendWithCheck (dest, source) {
+  var isSourceObject = typeof source === 'object';
+  if (source === null) { return dest; }
+  if (!isSourceObject) {
+    if (source === undefined) { return dest; }
+    return source;
+  }
+  return utils.extend(dest, source);
+}
+
+/**
+ * Converts string from hyphen to camelCase.
+ *
+ * @param {string} str - String to camelCase.
+ * @return {string} CamelCased string.
+ */
+function toCamelCase (str) {
+  return str.replace(/-([a-z])/g, camelCase);
+  function camelCase (g) { return g[1].toUpperCase(); }
+}
+
+/**
+ * Converts object's keys from hyphens to camelCase (e.g., `max-value` to
+ * `maxValue`).
+ *
+ * @param {object} obj - The object to camelCase keys.
+ * @return {object} The object with keys camelCased.
+ */
+function transformKeysToCamelCase (obj) {
+  var keys = Object.keys(obj);
+  var camelCaseObj = {};
+  keys.forEach(function (key) {
+    var camelCaseKey = toCamelCase(key);
+    camelCaseObj[camelCaseKey] = obj[key];
+  });
+  return camelCaseObj;
+}
+
+},{"../utils/":43,"../utils/debug":42,"style-attr":92}],39:[function(require,module,exports){
+require('es6-promise').polyfill();  // Polyfill `Promise`.
+require('present');  // Polyfill `performance.now()`.
+
+require('../style/aframe-core.css');
+require('../style/rStats.css');
+
+// Required before `AEntity` so that all components are registered.
+var AScene = require('./core/a-scene');
+var components = require('./core/component').components;
+var debug = require('./utils/debug');
+var registerComponent = require('./core/component').registerComponent;
+var registerElement = require('./core/a-register-element');
+// Exports THREE to window so three.js can be used without alteration.
+var THREE = window.THREE = require('../lib/three');
+
+var pkg = require('../package');
+var utils = require('./utils/');
+
+require('./components/index');  // Register core components.
+var ANode = require('./core/a-node');
+var AEntity = require('./core/a-entity');  // Depends on ANode and core components.
+
+// Webvr polyfill configuration.
+window.hasNonPolyfillWebVRSupport = !!navigator.getVRDevices;
+window.WebVRConfig = {
+  TOUCH_PANNER_DISABLED: true,
+  MOUSE_KEYBOARD_CONTROLS_DISABLED: true
+};
+require('webvr-polyfill');
+
+require('./core/a-animation');
+require('./core/a-assets');
+require('./core/a-cubemap');
+require('./core/a-mixin');
+require('./core/a-scene');
+
+module.exports = {
+  AEntity: AEntity,
+  ANode: ANode,
+  AScene: AScene,
+  components: components,
+  debug: debug,
+  registerComponent: registerComponent,
+  registerElement: registerElement,
+  THREE: THREE,
+  utils: utils,
+  version: pkg.version
+};
+
+},{"../lib/three":2,"../package":11,"../style/aframe-core.css":45,"../style/rStats.css":46,"./components/index":16,"./core/a-animation":30,"./core/a-assets":31,"./core/a-cubemap":32,"./core/a-entity":33,"./core/a-mixin":34,"./core/a-node":35,"./core/a-register-element":36,"./core/a-scene":37,"./core/component":38,"./utils/":43,"./utils/debug":42,"es6-promise":86,"present":89,"webvr-polyfill":96}],40:[function(require,module,exports){
+var coordinates = require('./coordinates');
+var utils = require('./index');
+
+/**
+ * If `value` is object, coerce values of `val` into types defined by `schema`.
+ * If `value` is string and `schemaAttr` defined, coerces `value` into the value in `schema`
+ * pointed to by `schemaAttr`.
+ *
+ * @param {object|string} value - value(s) to coerce.
+ * @param {object} schema - Object which values will be used to coerce to.
+ * @param {string} schemaAttr -
+ *   In case `value` is a string, `schemaAttr` signifies which value in `schema` to coerce to.
+ * @returns Coerced value or object.
+ */
+module.exports = function (value, schema, schemaAttr) {
+  var obj = value;
+
+  // Batch coerce.
+  if (typeof value === 'object') {
+    Object.keys(obj).forEach(function (key) {
+      var attrSchema = schema[key];
+      var schemaValue;
+      if (!attrSchema) {
+        utils.warn('Unknown component attribute: ' + key);
+        return;
+      }
+      schemaValue = attrSchema.default;
+      if (schemaValue === undefined) { return; }
+      obj[key] = coerceValue(obj[key], schemaValue);
+    });
+    return obj;
+  }
+
+  // Handle case: string.
+  return coerceValue(value, schema.default);
+
+  function coerceValue (value, targetValue) {
+    if (typeof value !== 'string') { return value; }
+
+    switch (typeof targetValue) {
+      case 'boolean':
+        return value === 'true';
+      case 'number':
+        return parseFloat(value);
+      case 'object':
+        if (utils.deepEqual(Object.keys(targetValue), ['x', 'y', 'z'])) {
+          return coordinates.parse(value);
+        }
+        return value;
+      default:
+        return value;
+    }
+  }
+};
+
+},{"./coordinates":41,"./index":43}],41:[function(require,module,exports){
+// Coordinate string regex. Handles negative, positive, and decimals.
+var regex = /\s*(-?\d*\.{0,1}\d+)\s*(-?\d*\.{0,1}\d+)\s*(-?\d*\.{0,1}\d+)\s*/;
+module.exports.regex = regex;
+
+/**
+ * Parses coordinates from an "x y z" string.
+ * Example: "3 10 -5" to {x: 3, y: 10, z: -5}.
+ *
+ * @param {string} val - An "x y z" string.
+ * @param {string} defaults - fallback value.
+ * @returns {object} An object with keys [x, y, z].
+ */
+function parse (value, schema) {
+  var coordinate;
+  schema = schema || {};
+  if (typeof value !== 'string' || value === null) { return value; }
+  coordinate = value.trim().replace(/\s+/g, ' ').split(' ');
+  return {
+    x: parseFloat(coordinate[0] || schema.x.default),
+    y: parseFloat(coordinate[1] || schema.y.default),
+    z: parseFloat(coordinate[2] || schema.z.default)
+  };
+}
+module.exports.parse = parse;
+
+/**
+ * Stringifies coordinates from an object with keys [x y z].
+ * Example: {x: 3, y: 10, z: -5} to "3 10 -5".
+ *
+ * @param {object|string} val - An object with keys [x y z].
+ * @returns {string} An "x y z" string.
+ */
+function stringify (value) {
+  if (typeof value !== 'object') { return value; }
+  return [value.x, value.y, value.z].join(' ');
+}
+module.exports.stringify = stringify;
+
+/**
+ * @returns {bool}
+ */
+module.exports.isCoordinate = function (value) {
+  return regex.test(value);
+};
+
+/**
+ * Prototype mixin for coordinate-only components.
+ */
+module.exports.componentMixin = {
+  parse: function (value) {
+    return parse(value, this.schema);
+  },
+
+  stringify: stringify
+};
+
+},{}],42:[function(require,module,exports){
+(function (process){
+var debugLib = require('debug');
+var extend = require('object-assign');
+
+var settings = {
+  colors: {
+    error: 'red',
+    info: 'gray',
+    warn: 'orange',
+    warning: 'orange'
+  }
+};
+
+/**
+ * Monkeypatches `debug` so we can colorize error/warning messages.
+ *
+ * (See issue: https://github.com/visionmedia/debug/issues/137)
+ */
+var debug = function (namespace) {
+  var d = debugLib(namespace);
+
+  d.color = getDebugNamespaceColor(namespace);
+
+  return d;
+};
+extend(debug, debugLib);
+
+/**
+ * Returns the type of the namespace (e.g., `error`, `warn`).
+ *
+ * @param {String} namespace
+ *   The debug logger's namespace (e.g., `components:geometry:warn`).
+ * @returns {String} The type of the namespace (e.g., `warn`).
+ * @api private
+ */
+function getDebugNamespaceType (namespace) {
+  var chunks = namespace.split(':');
+
+  return chunks[chunks.length - 1];  // Return the last one
+}
+
+/**
+ * Returns the color of the namespace (e.g., `orange`).
+ *
+ * @param {String} namespace
+ *   The debug logger's namespace (e.g., `components:geometry:warn`).
+ * @returns {String} The color of the namespace (e.g., `orange`).
+ * @api private
+ */
+function getDebugNamespaceColor (namespace) {
+  var type = getDebugNamespaceType(namespace);
+
+  var color = settings.colors && settings.colors[type];
+
+  return color || null;
+}
+
+/**
+ * Returns `localStorage` if possible.
+ *
+ * This is necessary because Safari throws when a user disables
+ * cookies or `localStorage` and you attempt to access it.
+ *
+ * @returns {localStorage}
+ * @api private
+ */
+function storage () {
+  try {
+    return window.localStorage;
+  } catch (e) {
+  }
+}
+
+/**
+ * To enable console logging, type this in the Console of your Dev Tools:
+ *
+ *   localStorage.logs = 1
+ *
+ * To disable console logging:
+ *
+ *   localStorage.logs = 0
+ *
+ */
+var ls = storage();
+if (ls && (parseInt(ls.logs, 10) || ls.logs === 'true')) {
+  debug.enable('*');
+} else {
+  // We do not call `debug.disable` because it requires two reloads to take.
+  // See https://github.com/visionmedia/debug/issues/238
+  // Instead, we call `debug.save` to remove the `debug` namespaces persisted
+  // in `localStorage`.
+  debug.save(null);
+  // And then we `noop` the function so nothing happens.
+  debug = function () {
+    /* noop */
+    return function () {};
+  };
+}
+
+if (process.browser) { window.logs = debug; }
+
+module.exports = debug;
+
+}).call(this,require('_process'))
+},{"_process":90,"debug":83,"object-assign":88}],43:[function(require,module,exports){
+/* global CustomEvent, location */
+/* Centralized place to reference utilities since utils is exposed to the user. */
+var objectAssign = require('object-assign');
+
+module.exports.coerce = require('./coerce');
+module.exports.coordinates = require('./coordinates');
+
+/**
+ * Fires a custom DOM event.
+ *
+ * @param {Element} el Element on which to fire the event.
+ * @param {String} name Name of the event.
+ * @param {Object=} [data={bubbles: true, {detail: <el>}}]
+ *   Data to pass as `customEventInit` to the event.
+ */
+module.exports.fireEvent = function (el, name, data) {
+  data = data || {};
+  data.detail = data.detail || {};
+  data.detail.target = data.detail.target || el;
+  var evt = new CustomEvent(name, data);
+  evt.target = el;
+  el.dispatchEvent(evt);
+};
+
+/**
+ * Throws an error given a message.
+ *
+ * @param {String} msg Error message.
+ */
+module.exports.error = function (msg) {
+  throw new Error(msg);
+};
+
+/**
+ * Emits a console warning given passed message argument(s).
+ */
+module.exports.warn = function () {
+  console.warn.apply(console, arguments);
+};
+
+/**
+ * Emits a console log given passed message argument(s).
+ */
+module.exports.log = function () {
+  console.log.apply(console, arguments);
+};
+
+/**
+ * Mix the properties of source object(s) into a destination object.
+ *
+ * @param  {object} dest - The object to which properties will be copied.
+ * @param  {...object} source - The object(s) from which properties will be copied.
+ */
+module.exports.extend = objectAssign;
+
+/**
+ * Checks if two objects have the same attributes and values, including nested objects.
+ *
+ * @param {object} a - First object.
+ * @param {object} b - Second object.
+ * @returns {boolean} Whether two objects are deeply equal.
+ */
+function deepEqual (a, b) {
+  var keysA = Object.keys(a);
+  var keysB = Object.keys(b);
+  var i;
+  if (keysA.length !== keysB.length) { return false; }
+  // If there are no keys, compare the objects.
+  if (keysA.length === 0) { return a === b; }
+  for (i = 0; i < keysA.length; ++i) {
+    if (a[keysA[i]] !== b[keysA[i]]) { return false; }
+  }
+  return true;
+}
+module.exports.deepEqual = deepEqual;
+
+/**
+ * Computes the difference between two objects.
+ *
+ * @param {object} a - First object to compare (e.g., oldData).
+ * @param {object} b - Second object to compare (e.g., newData).
+ * @returns {object}
+ *   Difference object where set of keys note which values were not equal, and values are
+ *   `b`'s values.
+ */
+module.exports.diff = function (a, b) {
+  var diff = {};
+  var keys = Object.keys(a);
+  Object.keys(b).forEach(function collectKeys (bKey) {
+    if (keys.indexOf(bKey) === -1) {
+      keys.push(bKey);
+    }
+  });
+  keys.forEach(function doDiff (key) {
+    var aVal = a[key];
+    var bVal = b[key];
+    var isComparingObjects = aVal && bVal &&
+                             aVal.constructor === Object && bVal.constructor === Object;
+    if ((isComparingObjects && !deepEqual(aVal, bVal)) ||
+        (!isComparingObjects && aVal !== bVal)) {
+      diff[key] = bVal;
+    }
+  });
+  return diff;
+};
+
+/**
+ * Checks if browser is mobile.
+ * @return {Boolean} True if mobile browser detected.
+ */
+module.exports.isMobile = function () {
+  var check = false;
+  (function (a) {
+    if (/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i.test(a) || /1207|6310|6590|3gso|4thp|50[1-6]i|770s|802s|a wa|abac|ac(er|oo|s\-)|ai(ko|rn)|al(av|ca|co)|amoi|an(ex|ny|yw)|aptu|ar(ch|go)|as(te|us)|attw|au(di|\-m|r |s )|avan|be(ck|ll|nq)|bi(lb|rd)|bl(ac|az)|br(e|v)w|bumb|bw\-(n|u)|c55\/|capi|ccwa|cdm\-|cell|chtm|cldc|cmd\-|co(mp|nd)|craw|da(it|ll|ng)|dbte|dc\-s|devi|dica|dmob|do(c|p)o|ds(12|\-d)|el(49|ai)|em(l2|ul)|er(ic|k0)|esl8|ez([4-7]0|os|wa|ze)|fetc|fly(\-|_)|g1 u|g560|gene|gf\-5|g\-mo|go(\.w|od)|gr(ad|un)|haie|hcit|hd\-(m|p|t)|hei\-|hi(pt|ta)|hp( i|ip)|hs\-c|ht(c(\-| |_|a|g|p|s|t)|tp)|hu(aw|tc)|i\-(20|go|ma)|i230|iac( |\-|\/)|ibro|idea|ig01|ikom|im1k|inno|ipaq|iris|ja(t|v)a|jbro|jemu|jigs|kddi|keji|kgt( |\/)|klon|kpt |kwc\-|kyo(c|k)|le(no|xi)|lg( g|\/(k|l|u)|50|54|\-[a-w])|libw|lynx|m1\-w|m3ga|m50\/|ma(te|ui|xo)|mc(01|21|ca)|m\-cr|me(rc|ri)|mi(o8|oa|ts)|mmef|mo(01|02|bi|de|do|t(\-| |o|v)|zz)|mt(50|p1|v )|mwbp|mywa|n10[0-2]|n20[2-3]|n30(0|2)|n50(0|2|5)|n7(0(0|1)|10)|ne((c|m)\-|on|tf|wf|wg|wt)|nok(6|i)|nzph|o2im|op(ti|wv)|oran|owg1|p800|pan(a|d|t)|pdxg|pg(13|\-([1-8]|c))|phil|pire|pl(ay|uc)|pn\-2|po(ck|rt|se)|prox|psio|pt\-g|qa\-a|qc(07|12|21|32|60|\-[2-7]|i\-)|qtek|r380|r600|raks|rim9|ro(ve|zo)|s55\/|sa(ge|ma|mm|ms|ny|va)|sc(01|h\-|oo|p\-)|sdk\/|se(c(\-|0|1)|47|mc|nd|ri)|sgh\-|shar|sie(\-|m)|sk\-0|sl(45|id)|sm(al|ar|b3|it|t5)|so(ft|ny)|sp(01|h\-|v\-|v )|sy(01|mb)|t2(18|50)|t6(00|10|18)|ta(gt|lk)|tcl\-|tdg\-|tel(i|m)|tim\-|t\-mo|to(pl|sh)|ts(70|m\-|m3|m5)|tx\-9|up(\.b|g1|si)|utst|v400|v750|veri|vi(rg|te)|vk(40|5[0-3]|\-v)|vm40|voda|vulc|vx(52|53|60|61|70|80|81|83|85|98)|w3c(\-| )|webc|whit|wi(g |nc|nw)|wmlb|wonu|x700|yas\-|your|zeto|zte\-/i.test(a.substr(0, 4))) {
+      check = true;
+    }
+    if (isIOS()) {
+      check = true;
+    }
+  })(navigator.userAgent || navigator.vendor || window.opera);
+  return check;
+};
+
+var isIOS = module.exports.isIOS = function () {
+  return /iPad|iPhone|iPod/.test(navigator.platform);
+};
+
+/**
+ * Checks mobile device orientation
+ * @return {Boolean} True if landscape orientation
+ */
+module.exports.isLandscape = function () {
+  return window.orientation === 90 || window.orientation === -90;
+};
+
+/**
+ * Splits a string into an array based on a delimiter.
+ *
+ * @param   {string=} [str='']        Source string
+ * @param   {string=} [delimiter=' '] Delimiter to use
+ * @returns {array}                   Array of delimited strings
+ */
+module.exports.splitString = function (str, delimiter) {
+  if (typeof delimiter === 'undefined') { delimiter = ' '; }
+  // First collapse the whitespace (or whatever the delimiter is).
+  var regex = new RegExp(delimiter, 'g');
+  str = (str || '').replace(regex, delimiter);
+  // Then split.
+  return str.split(delimiter);
+};
+
+/**
+ * Extracts data from the element given an object that contains expected keys.
+ *
+ * @param {Element} Source element.
+ * @param {Object} [defaults={}] Object of default key-value pairs.
+ * @returns {Object}
+ */
+module.exports.getElData = function (el, defaults) {
+  defaults = defaults || {};
+  var data = {};
+  Object.keys(defaults).forEach(copyAttribute);
+  function copyAttribute (key) {
+    if (el.hasAttribute(key)) {
+      data[key] = el.getAttribute(key);
+    }
+  }
+  return data;
+};
+
+/**
+ * Retrieves querystring value.
+ * @param  {String} name Name of querystring key.
+ * @return {String}      Value
+ */
+module.exports.getUrlParameter = function (name) {
+  name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
+  var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
+  var results = regex.exec(location.search);
+  return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
+};
+
+// Must be at bottom to avoid circular dependency.
+module.exports.srcLoader = require('./src-loader');
+
+},{"./coerce":40,"./coordinates":41,"./src-loader":44,"object-assign":88}],44:[function(require,module,exports){
+/* global Image */
+var debug = require('./debug');
+
+var warn = debug('utils:src-loader:warn');
+
+/**
+ * Validates a texture, either as a selector or as a URL.
+ * Detects whether `src` is pointing to an image or to a video, and invokes the
+ * appropriate callback.
+ *
+ * If `src` is selector, check if it's valid, return the el in the callback.
+ * An el is returned so that it can be reused for texture loading.
+ *
+ * If `src` is a URL, check if it's valid, return the src in the callback.
+ *
+ * @params {string} src - A selector or a URL. URLs must be wrapped by `url()`.
+ * @params {function} isImageCb - callback if texture is an image.
+ * @params {function} isVideoCb - callback if texture is a video.
+ */
+function validateSrc (src, isImageCb, isVideoCb) {
+  var textureEl;
+  var isImage;
+  var isVideo;
+  var url = parseUrl(src);
+
+  // src is a url.
+  if (url) {
+    validateImageUrl(url, function isAnImageUrl (isImage) {
+      if (!isImage) { isVideoCb(url); return; }
+      isImageCb(url);
+    });
+    return;
+  }
+
+  // src is a query selector.
+  textureEl = validateAndGetQuerySelector(src);
+  if (!textureEl) { return; }
+  isImage = textureEl && textureEl.tagName === 'IMG';
+  isVideo = textureEl && textureEl.tagName === 'VIDEO';
+  if (isImage) { return isImageCb(textureEl); }
+  if (isVideo) { return isVideoCb(textureEl); }
+
+  // src is a valid selector but doesn't match with a <img> or <video> element.
+  warn('"%s" does not point to a valid <img> or <video> element', src);
+}
+
+/**
+ * Validates six images as a cubemap, either as selector or comma-separated
+ * URLs.
+ *
+ * @param {string} src - A selector or comma-separated image URLs. Image URLs
+          must be wrapped by `url()`.
+ * @param {string} src - A selector or comma-separated image URLs. Image URLs
+          must be wrapped by `url()`.
+ */
+function validateCubemapSrc (src, cb) {
+  var aCubemap;
+  var cubemapSrcRegex = '';
+  var i;
+  var urls;
+  var validatedUrls = [];
+
+  for (i = 0; i < 6; i++) {
+    cubemapSrcRegex += 'url\((.+)\)\s*,\s*';
+  }
+  urls = src.match(cubemapSrcRegex);
+
+  // `src` is a comma-separated list of URLs.
+  // In this case, re-use validateSrc for each side of the cube.
+  function isImageCb (url) {
+    validatedUrls.push(url);
+    if (validatedUrls.length === 6) {
+      cb(validatedUrls);
+    }
+  }
+  if (urls) {
+    for (i = 1; i < 7; i++) {
+      validateSrc(urls[i], isImageCb);
+    }
+    return;
+  }
+
+  // `src` is a query selector to <a-cubemap> containing six $([src])s.
+  aCubemap = validateAndGetQuerySelector(src);
+  if (!aCubemap) { return; }
+  if (aCubemap.tagName === 'A-CUBEMAP' && aCubemap.srcs) {
+    return cb(aCubemap.srcs);
+  }
+  // Else if aCubeMap is not a <a-cubemap>.
+  warn('Selector "%s" does not point to <a-cubemap>', src);
+}
+
+/**
+ * Parses src from `url(src)`.
+ * @param  {string} src - String to parse.
+ * @return {string} The parsed src, if parseable.
+ */
+function parseUrl (src) {
+  var parsedSrc = src.match(/\url\((.+)\)/);
+  if (!parsedSrc) { return; }
+  return parsedSrc[1];
+}
+
+/**
+ * Validate src is a valid image url
+ * @param  {string} src - url that will be tested
+ * @param  {function} onResult - callback with the test result
+ */
+function validateImageUrl (src, onResult) {
+  var tester = new Image();
+  tester.addEventListener('load', onLoad);
+  function onLoad () { onResult(true); }
+  tester.addEventListener('error', onError);
+  function onError () { onResult(false); }
+  tester.src = src;
+}
+
+/**
+ * Query and validate a query selector,
+ *
+ * @param  {string} selector - DOM selector.
+ * @return {object|null|undefined} Selected DOM element if exists.
+           null if query yields no results.
+           undefined if `selector` is not a valid selector.
+ */
+function validateAndGetQuerySelector (selector) {
+  try {
+    var el = document.querySelector(selector);
+    if (!el) {
+      warn('No element was found matching the selector: "%s"', selector);
+    }
+    return el;
+  } catch (e) {  // Capture exception if it's not a valid selector.
+    warn('"%s" is not a valid selector', selector);
+    return undefined;
+  }
+}
+
+module.exports = {
+  parseUrl: parseUrl,
+  validateSrc: validateSrc,
+  validateCubemapSrc: validateCubemapSrc
+};
+
+},{"./debug":42}],45:[function(require,module,exports){
+var css = "html {\n  bottom: 0;\n  left: 0;\n  position: fixed;\n  right: 0;\n  top: 0;\n}\nbody {\n  height: 100%;\n  margin: 0;\n  overflow: hidden;\n  padding: 0;\n  width: 100%;\n}\n.a-hidden {\n  display: none !important;\n}\n.a-canvas {\n  height: 100%;\n  left: 0;\n  position: absolute;\n  top: 0;\n  width: 100%;\n}\na-assets,\na-scene video,\na-scene img {\n  display: none;\n}\n.a-enter-vr {\n  align-items: flex-end;\n  -webkit-align-items: flex-end;\n  bottom: 5px;\n  display: flex;\n  display: -webkit-flex;\n  font-family: sans-serif, monospace;\n  font-size: 13px;\n  font-weight: 200;\n  line-height: 16px;\n  height: 72px;\n  position: fixed;\n  right: 5px;\n}\n.a-enter-vr-button {\n  background: rgba(0, 0, 0, 0.35) url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20245.82%20141.73%22%3E%3Cdefs%3E%3Cstyle%3E.a%7Bfill%3A%23fff%3Bfill-rule%3Aevenodd%3B%7D%3C%2Fstyle%3E%3C%2Fdefs%3E%3Ctitle%3Emask%3C%2Ftitle%3E%3Cpath%20class%3D%22a%22%20d%3D%22M175.56%2C111.37c-22.52%2C0-40.77-18.84-40.77-42.07S153%2C27.24%2C175.56%2C27.24s40.77%2C18.84%2C40.77%2C42.07S198.08%2C111.37%2C175.56%2C111.37ZM26.84%2C69.31c0-23.23%2C18.25-42.07%2C40.77-42.07s40.77%2C18.84%2C40.77%2C42.07-18.26%2C42.07-40.77%2C42.07S26.84%2C92.54%2C26.84%2C69.31ZM27.27%2C0C11.54%2C0%2C0%2C12.34%2C0%2C28.58V110.9c0%2C16.24%2C11.54%2C30.83%2C27.27%2C30.83H99.57c2.17%2C0%2C4.19-1.83%2C5.4-3.7L116.47%2C118a8%2C8%2C0%2C0%2C1%2C12.52-.18l11.51%2C20.34c1.2%2C1.86%2C3.22%2C3.61%2C5.39%2C3.61h72.29c15.74%2C0%2C27.63-14.6%2C27.63-30.83V28.58C245.82%2C12.34%2C233.93%2C0%2C218.19%2C0H27.27Z%22%2F%3E%3C%2Fsvg%3E) 50% 50% no-repeat;\n  background-size: 70% 70%;\n  border: 0;\n  bottom: 0;\n  color: #FFF;\n  cursor: pointer;\n  height: 50px;\n  transition: background .05s ease;\n  -webkit-transition: background .05s ease;\n  width: 60px;\n  z-index: 999999;\n}\n.a-enter-vr-button:active,\n.a-enter-vr-button:hover {\n  background-color: #666666;\n}\n[data-a-enter-vr-no-webvr] .a-enter-vr-button {\n  border-color: #666666;\n  opacity: 0.65;\n}\n[data-a-enter-vr-no-webvr] .a-enter-vr-button:active,\n[data-a-enter-vr-no-webvr] .a-enter-vr-button:hover {\n  background-color: rgba(0, 0, 0, .35);\n  cursor: not-allowed;\n}\n.a-enter-vr-modal {\n  background-color: #666666;\n  border-radius: 0;\n  color: #FFF;\n  height: 32px;\n  opacity: 0;\n  margin-right: 10px;\n  padding: 9px;\n  width: 280px;\n  position: relative;\n  transition: opacity .05s ease;\n  -webkit-transition: opacity .05s ease;\n}\n.a-enter-vr-modal:after {\n  border-bottom: 10px solid transparent;\n  border-left: 10px solid #666666;\n  border-top: 10px solid transparent;\n  display: inline-block;\n  content: '';\n  position: absolute;\n  right: -5px;\n  top: 5px;\n  width: 0;\n  height: 0;\n}\n.a-enter-vr-modal p {\n  margin: 0;\n  display: inline;\n}\n.a-enter-vr-modal p:after {\n  content: ' ';\n}\n.a-enter-vr-modal a {\n  color: #FFF;\n  display: inline;\n}\n[data-a-enter-vr-no-webvr]:hover .a-enter-vr-modal,\n[data-a-enter-vr-no-headset]:hover .a-enter-vr-modal {\n  opacity: 1;\n}\n.a-orientation-modal {\n  position: absolute;\n  width: 100%;\n  height: 100%;\n  top: 0;\n  left: 0;\n  background: rgba(244, 244, 244, 1) url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20xmlns%3Axlink%3D%22http%3A//www.w3.org/1999/xlink%22%20version%3D%221.1%22%20x%3D%220px%22%20y%3D%220px%22%20viewBox%3D%220%200%2090%2090%22%20enable-background%3D%22new%200%200%2090%2090%22%20xml%3Aspace%3D%22preserve%22%3E%3Cpolygon%20points%3D%220%2C0%200%2C0%200%2C0%20%22%3E%3C/polygon%3E%3Cg%3E%3Cpath%20d%3D%22M71.545%2C48.145h-31.98V20.743c0-2.627-2.138-4.765-4.765-4.765H18.456c-2.628%2C0-4.767%2C2.138-4.767%2C4.765v42.789%20%20%20c0%2C2.628%2C2.138%2C4.766%2C4.767%2C4.766h5.535v0.959c0%2C2.628%2C2.138%2C4.765%2C4.766%2C4.765h42.788c2.628%2C0%2C4.766-2.137%2C4.766-4.765V52.914%20%20%20C76.311%2C50.284%2C74.173%2C48.145%2C71.545%2C48.145z%20M18.455%2C16.935h16.344c2.1%2C0%2C3.808%2C1.708%2C3.808%2C3.808v27.401H37.25V22.636%20%20%20c0-0.264-0.215-0.478-0.479-0.478H16.482c-0.264%2C0-0.479%2C0.214-0.479%2C0.478v36.585c0%2C0.264%2C0.215%2C0.478%2C0.479%2C0.478h7.507v7.644%20%20%20h-5.534c-2.101%2C0-3.81-1.709-3.81-3.81V20.743C14.645%2C18.643%2C16.354%2C16.935%2C18.455%2C16.935z%20M16.96%2C23.116h19.331v25.031h-7.535%20%20%20c-2.628%2C0-4.766%2C2.139-4.766%2C4.768v5.828h-7.03V23.116z%20M71.545%2C73.064H28.757c-2.101%2C0-3.81-1.708-3.81-3.808V52.914%20%20%20c0-2.102%2C1.709-3.812%2C3.81-3.812h42.788c2.1%2C0%2C3.809%2C1.71%2C3.809%2C3.812v16.343C75.354%2C71.356%2C73.645%2C73.064%2C71.545%2C73.064z%22%3E%3C/path%3E%3Cpath%20d%3D%22M28.919%2C58.424c-1.466%2C0-2.659%2C1.193-2.659%2C2.66c0%2C1.466%2C1.193%2C2.658%2C2.659%2C2.658c1.468%2C0%2C2.662-1.192%2C2.662-2.658%20%20%20C31.581%2C59.617%2C30.387%2C58.424%2C28.919%2C58.424z%20M28.919%2C62.786c-0.939%2C0-1.703-0.764-1.703-1.702c0-0.939%2C0.764-1.704%2C1.703-1.704%20%20%20c0.94%2C0%2C1.705%2C0.765%2C1.705%2C1.704C30.623%2C62.022%2C29.858%2C62.786%2C28.919%2C62.786z%22%3E%3C/path%3E%3Cpath%20d%3D%22M69.654%2C50.461H33.069c-0.264%2C0-0.479%2C0.215-0.479%2C0.479v20.288c0%2C0.264%2C0.215%2C0.478%2C0.479%2C0.478h36.585%20%20%20c0.263%2C0%2C0.477-0.214%2C0.477-0.478V50.939C70.131%2C50.676%2C69.917%2C50.461%2C69.654%2C50.461z%20M69.174%2C51.417V70.75H33.548V51.417H69.174z%22%3E%3C/path%3E%3Cpath%20d%3D%22M45.201%2C30.296c6.651%2C0%2C12.233%2C5.351%2C12.551%2C11.977l-3.033-2.638c-0.193-0.165-0.507-0.142-0.675%2C0.048%20%20%20c-0.174%2C0.198-0.153%2C0.501%2C0.045%2C0.676l3.883%2C3.375c0.09%2C0.075%2C0.198%2C0.115%2C0.312%2C0.115c0.141%2C0%2C0.273-0.061%2C0.362-0.166%20%20%20l3.371-3.877c0.173-0.2%2C0.151-0.502-0.047-0.675c-0.194-0.166-0.508-0.144-0.676%2C0.048l-2.592%2C2.979%20%20%20c-0.18-3.417-1.629-6.605-4.099-9.001c-2.538-2.461-5.877-3.817-9.404-3.817c-0.264%2C0-0.479%2C0.215-0.479%2C0.479%20%20%20C44.72%2C30.083%2C44.936%2C30.296%2C45.201%2C30.296z%22%3E%3C/path%3E%3C/g%3E%3C/svg%3E);\n  background-size: 50% 50%;\n  background-repeat: no-repeat;\n  background-position: center center;\n}\n.a-orientation-modal:after {\n  content: \"Insert phone into Cardboard holder.\";\n  color: #333;\n  font-family: sans-serif, monospace;\n  font-size: 13px;\n  text-align: center;\n  position: absolute;\n  width: 100%;\n  top: 70%;\n  transform: translateY(-70%);\n}\n.a-orientation-modal button {\n  background: url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20xmlns%3Axlink%3D%22http%3A//www.w3.org/1999/xlink%22%20version%3D%221.1%22%20x%3D%220px%22%20y%3D%220px%22%20viewBox%3D%220%200%20100%20100%22%20enable-background%3D%22new%200%200%20100%20100%22%20xml%3Aspace%3D%22preserve%22%3E%3Cpath%20fill%3D%22%23000000%22%20d%3D%22M55.209%2C50l17.803-17.803c1.416-1.416%2C1.416-3.713%2C0-5.129c-1.416-1.417-3.713-1.417-5.129%2C0L50.08%2C44.872%20%20L32.278%2C27.069c-1.416-1.417-3.714-1.417-5.129%2C0c-1.417%2C1.416-1.417%2C3.713%2C0%2C5.129L44.951%2C50L27.149%2C67.803%20%20c-1.417%2C1.416-1.417%2C3.713%2C0%2C5.129c0.708%2C0.708%2C1.636%2C1.062%2C2.564%2C1.062c0.928%2C0%2C1.856-0.354%2C2.564-1.062L50.08%2C55.13l17.803%2C17.802%20%20c0.708%2C0.708%2C1.637%2C1.062%2C2.564%2C1.062s1.856-0.354%2C2.564-1.062c1.416-1.416%2C1.416-3.713%2C0-5.129L55.209%2C50z%22%3E%3C/path%3E%3C/svg%3E);\n  width: 50px;\n  height: 50px;\n  border: none;\n  text-indent: -9999px;\n}\n@media (min-width: 480px) {\n  .a-enter-vr {\n    bottom: 20px;\n    right: 20px;\n  }\n\n  .a-enter-vr-modal {\n    width: 400px;\n  }\n}\n"; (require("browserify-css").createStyle(css, { "href": "node_modules/aframe-core/style/aframe-core.css"})); module.exports = css;
+},{"browserify-css":81}],46:[function(require,module,exports){
+var css = ".rs-base {\n  background-color: #EF2D5E;\n  border-radius: 0;\n  font-family: 'Roboto Condensed', tahoma, sans-serif;\n  font-size: 10px;\n  line-height: 1.2em;\n  opacity: 0.75;\n  overflow: hidden;\n  padding: 10px;\n  position: fixed;\n  left: 5px;\n  top: 5px;\n  width: 270px;\n  z-index: 10000;\n}\n.rs-base.hidden {\n  display: none;\n}\n.rs-base h1 {\n  color: #fff;\n  cursor: pointer;\n  font-size: 1.4em;\n  font-weight: 300;\n  margin: 0 0 5px;\n  padding: 0;\n}\n.rs-group {\n  display: -webkit-box;\n  display: -webkit-flex;\n  display: flex;\n  -webkit-flex-direction: column-reverse;\n  flex-direction: column-reverse;\n}\n.rs-counter-base {\n  align-items: center;\n  display: -webkit-box;\n  display: -webkit-flex;\n  display: flex;\n  height: 10px;\n  -webkit-justify-content: space-between;\n  justify-content: space-between;\n  margin: 2px 0;\n}\n.rs-counter-id {\n  font-weight: 300;\n  -webkit-box-ordinal-group: 0;\n  -webkit-order: 0;\n  order: 0;\n}\n.rs-counter-value {\n  font-weight: 300;\n  -webkit-box-ordinal-group: 1;\n  -webkit-order: 1;\n  order: 1;\n  text-align: right;\n  width: 25px;\n}\n.rs-canvas {\n  -webkit-box-ordinal-group: 2;\n  -webkit-order: 2;\n  order: 2;\n}\n@media (min-width: 480px) {\n  .rs-base {\n    left: 20px;\n    top: 20px;\n  }\n}\n"; (require("browserify-css").createStyle(css, { "href": "node_modules/aframe-core/style/rStats.css"})); module.exports = css;
+},{"browserify-css":81}],47:[function(require,module,exports){
+/**
+ * Text component for A-Frame.
+ */
+require('./lib/FontUtils');
+require('./lib/TextGeometry');
+require('./lib/helvetiker_regular.typeface');
+
+module.exports.component = {
+  schema: {
+    bevelEnabled: { default: false },
+    bevelSize: { default: 8, min: 0 },
+    bevelThickness: { default: 12, min: 0 },
+    curveSegments: { default: 12, min: 0 },
+    font: { default: 'helvetiker', min: 0 },
+    height: { default: 0.05, min: 0 },
+    size: { default: 0.5, min: 0 },
+    style: { default: 'normal', oneOf: [ 'normal', 'italics' ] },
+    text: { default: '' },
+    weight: { default: 'normal', oneOf: [ 'normal', 'bold' ] }
+  },
+
+  /**
+   * Called when component is attached and when component data changes.
+   * Generally modifies the entity based on the data.
+   */
+  update: function (oldData) {
+    this.el.object3D.geometry = getTextGeometry(this.data);
+  }
+};
+
+function getTextGeometry (data) {
+  return new THREE.TextGeometry(data.text, data);
+}
+
+},{"./lib/FontUtils":48,"./lib/TextGeometry":49,"./lib/helvetiker_regular.typeface":50}],48:[function(require,module,exports){
+/**
+ * @author zz85 / http://www.lab4games.net/zz85/blog
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * For Text operations in three.js (See TextGeometry)
+ *
+ * It uses techniques used in:
+ *
+ *	Triangulation ported from AS3
+ *		Simple Polygon Triangulation
+ *		http://actionsnippet.com/?p=1462
+ *
+ * 	A Method to triangulate shapes with holes
+ *		http://www.sakri.net/blog/2009/06/12/an-approach-to-triangulating-polygons-with-holes/
+ *
+ */
+
+THREE.FontUtils = {
+
+	faces: {},
+
+	// Just for now. face[weight][style]
+
+	face: 'helvetiker',
+	weight: 'normal',
+	style: 'normal',
+	size: 150,
+	divisions: 10,
+
+	getFace: function () {
+
+		try {
+
+			return this.faces[ this.face.toLowerCase() ][ this.weight ][ this.style ];
+
+		} catch ( e ) {
+
+			throw "The font " + this.face + " with " + this.weight + " weight and " + this.style + " style is missing."
+
+		}
+
+	},
+
+	loadFace: function ( data ) {
+
+		var family = data.familyName.toLowerCase();
+
+		var ThreeFont = this;
+
+		ThreeFont.faces[ family ] = ThreeFont.faces[ family ] || {};
+
+		ThreeFont.faces[ family ][ data.cssFontWeight ] = ThreeFont.faces[ family ][ data.cssFontWeight ] || {};
+		ThreeFont.faces[ family ][ data.cssFontWeight ][ data.cssFontStyle ] = data;
+
+		ThreeFont.faces[ family ][ data.cssFontWeight ][ data.cssFontStyle ] = data;
+
+		return data;
+
+	},
+
+	drawText: function ( text ) {
+
+		// RenderText
+
+		var i,
+			face = this.getFace(),
+			scale = this.size / face.resolution,
+			offset = 0,
+			chars = String( text ).split( '' ),
+			length = chars.length;
+
+		var fontPaths = [];
+
+		for ( i = 0; i < length; i ++ ) {
+
+			var path = new THREE.Path();
+
+			var ret = this.extractGlyphPoints( chars[ i ], face, scale, offset, path );
+			offset += ret.offset;
+
+			fontPaths.push( ret.path );
+
+		}
+
+		// get the width
+
+		var width = offset / 2;
+		//
+		// for ( p = 0; p < allPts.length; p++ ) {
+		//
+		// 	allPts[ p ].x -= width;
+		//
+		// }
+
+		//var extract = this.extractPoints( allPts, characterPts );
+		//extract.contour = allPts;
+
+		//extract.paths = fontPaths;
+		//extract.offset = width;
+
+		return { paths: fontPaths, offset: width };
+
+	},
+
+
+
+
+	extractGlyphPoints: function ( c, face, scale, offset, path ) {
+
+		var pts = [];
+
+		var b2 = THREE.ShapeUtils.b2;
+		var b3 = THREE.ShapeUtils.b3;
+
+		var i, i2, divisions,
+			outline, action, length,
+			scaleX, scaleY,
+			x, y, cpx, cpy, cpx0, cpy0, cpx1, cpy1, cpx2, cpy2,
+			laste,
+			glyph = face.glyphs[ c ] || face.glyphs[ '?' ];
+
+		if ( ! glyph ) return;
+
+		if ( glyph.o ) {
+
+			outline = glyph._cachedOutline || ( glyph._cachedOutline = glyph.o.split( ' ' ) );
+			length = outline.length;
+
+			scaleX = scale;
+			scaleY = scale;
+
+			for ( i = 0; i < length; ) {
+
+				action = outline[ i ++ ];
+
+				//console.log( action );
+
+				switch ( action ) {
+
+				case 'm':
+
+					// Move To
+
+					x = outline[ i ++ ] * scaleX + offset;
+					y = outline[ i ++ ] * scaleY;
+
+					path.moveTo( x, y );
+					break;
+
+				case 'l':
+
+					// Line To
+
+					x = outline[ i ++ ] * scaleX + offset;
+					y = outline[ i ++ ] * scaleY;
+					path.lineTo( x, y );
+					break;
+
+				case 'q':
+
+					// QuadraticCurveTo
+
+					cpx  = outline[ i ++ ] * scaleX + offset;
+					cpy  = outline[ i ++ ] * scaleY;
+					cpx1 = outline[ i ++ ] * scaleX + offset;
+					cpy1 = outline[ i ++ ] * scaleY;
+
+					path.quadraticCurveTo( cpx1, cpy1, cpx, cpy );
+
+					laste = pts[ pts.length - 1 ];
+
+					if ( laste ) {
+
+						cpx0 = laste.x;
+						cpy0 = laste.y;
+
+						for ( i2 = 1, divisions = this.divisions; i2 <= divisions; i2 ++ ) {
+
+							var t = i2 / divisions;
+							b2( t, cpx0, cpx1, cpx );
+							b2( t, cpy0, cpy1, cpy );
+
+						}
+
+					}
+
+					break;
+
+				case 'b':
+
+					// Cubic Bezier Curve
+
+					cpx  = outline[ i ++ ] * scaleX + offset;
+					cpy  = outline[ i ++ ] * scaleY;
+					cpx1 = outline[ i ++ ] * scaleX + offset;
+					cpy1 = outline[ i ++ ] * scaleY;
+					cpx2 = outline[ i ++ ] * scaleX + offset;
+					cpy2 = outline[ i ++ ] * scaleY;
+
+					path.bezierCurveTo( cpx1, cpy1, cpx2, cpy2, cpx, cpy );
+
+					laste = pts[ pts.length - 1 ];
+
+					if ( laste ) {
+
+						cpx0 = laste.x;
+						cpy0 = laste.y;
+
+						for ( i2 = 1, divisions = this.divisions; i2 <= divisions; i2 ++ ) {
+
+							var t = i2 / divisions;
+							b3( t, cpx0, cpx1, cpx2, cpx );
+							b3( t, cpy0, cpy1, cpy2, cpy );
+
+						}
+
+					}
+
+					break;
+
+				}
+
+			}
+
+		}
+
+
+
+		return { offset: glyph.ha * scale, path: path };
+
+	}
+
+};
+
+
+THREE.FontUtils.generateShapes = function ( text, parameters ) {
+
+	// Parameters
+
+	parameters = parameters || {};
+
+	var size = parameters.size !== undefined ? parameters.size : 100;
+	var curveSegments = parameters.curveSegments !== undefined ? parameters.curveSegments : 4;
+
+	var font = parameters.font !== undefined ? parameters.font : 'helvetiker';
+	var weight = parameters.weight !== undefined ? parameters.weight : 'normal';
+	var style = parameters.style !== undefined ? parameters.style : 'normal';
+
+	THREE.FontUtils.size = size;
+	THREE.FontUtils.divisions = curveSegments;
+
+	THREE.FontUtils.face = font;
+	THREE.FontUtils.weight = weight;
+	THREE.FontUtils.style = style;
+
+	// Get a Font data json object
+
+	var data = THREE.FontUtils.drawText( text );
+
+	var paths = data.paths;
+	var shapes = [];
+
+	for ( var p = 0, pl = paths.length; p < pl; p ++ ) {
+
+		Array.prototype.push.apply( shapes, paths[ p ].toShapes() );
+
+	}
+
+	return shapes;
+
+};
+
+// To use the typeface.js face files, hook up the API
+
+THREE.typeface_js = { faces: THREE.FontUtils.faces, loadFace: THREE.FontUtils.loadFace };
+if ( typeof self !== 'undefined' ) self._typeface_js = THREE.typeface_js;
+
+},{}],49:[function(require,module,exports){
+/**
+ * @author zz85 / http://www.lab4games.net/zz85/blog
+ * @author alteredq / http://alteredqualia.com/
+ *
+ * For creating 3D text geometry in three.js
+ *
+ * Text = 3D Text
+ *
+ * parameters = {
+ *  size: 			<float>, 	// size of the text
+ *  height: 		<float>, 	// thickness to extrude text
+ *  curveSegments: 	<int>,		// number of points on the curves
+ *
+ *  font: 			<string>,		// font name
+ *  weight: 		<string>,		// font weight (normal, bold)
+ *  style: 			<string>,		// font style  (normal, italics)
+ *
+ *  bevelEnabled:	<bool>,			// turn on bevel
+ *  bevelThickness: <float>, 		// how deep into text bevel goes
+ *  bevelSize:		<float>, 		// how far from text outline is bevel
+ *  }
+ *
+ */
+
+/*	Usage Examples
+
+	// TextGeometry wrapper
+
+	var text3d = new TextGeometry( text, options );
+
+	// Complete manner
+
+	var textShapes = THREE.FontUtils.generateShapes( text, options );
+	var text3d = new ExtrudeGeometry( textShapes, options );
+
+*/
+
+
+THREE.TextGeometry = function ( text, parameters ) {
+
+	parameters = parameters || {};
+
+	var textShapes = THREE.FontUtils.generateShapes( text, parameters );
+
+	// translate parameters to ExtrudeGeometry API
+
+	parameters.amount = parameters.height !== undefined ? parameters.height : 50;
+
+	// defaults
+
+	if ( parameters.bevelThickness === undefined ) parameters.bevelThickness = 10;
+	if ( parameters.bevelSize === undefined ) parameters.bevelSize = 8;
+	if ( parameters.bevelEnabled === undefined ) parameters.bevelEnabled = false;
+
+	THREE.ExtrudeGeometry.call( this, textShapes, parameters );
+
+	this.type = 'TextGeometry';
+
+};
+
+THREE.TextGeometry.prototype = Object.create( THREE.ExtrudeGeometry.prototype );
+THREE.TextGeometry.prototype.constructor = THREE.TextGeometry;
+
+},{}],50:[function(require,module,exports){
+if (_typeface_js && _typeface_js.loadFace) _typeface_js.loadFace({"glyphs":{"ο":{"x_min":0,"x_max":712,"ha":815,"o":"m 356 -25 q 96 88 192 -25 q 0 368 0 201 q 92 642 0 533 q 356 761 192 761 q 617 644 517 761 q 712 368 712 533 q 619 91 712 201 q 356 -25 520 -25 m 356 85 q 527 175 465 85 q 583 369 583 255 q 528 562 583 484 q 356 651 466 651 q 189 560 250 651 q 135 369 135 481 q 187 177 135 257 q 356 85 250 85 "},"S":{"x_min":0,"x_max":788,"ha":890,"o":"m 788 291 q 662 54 788 144 q 397 -26 550 -26 q 116 68 226 -26 q 0 337 0 168 l 131 337 q 200 152 131 220 q 384 85 269 85 q 557 129 479 85 q 650 270 650 183 q 490 429 650 379 q 194 513 341 470 q 33 739 33 584 q 142 964 33 881 q 388 1041 242 1041 q 644 957 543 1041 q 756 716 756 867 l 625 716 q 561 874 625 816 q 395 933 497 933 q 243 891 309 933 q 164 759 164 841 q 325 609 164 656 q 625 526 475 568 q 788 291 788 454 "},"¦":{"x_min":343,"x_max":449,"ha":792,"o":"m 449 462 l 343 462 l 343 986 l 449 986 l 449 462 m 449 -242 l 343 -242 l 343 280 l 449 280 l 449 -242 "},"/":{"x_min":183.25,"x_max":608.328125,"ha":792,"o":"m 608 1041 l 266 -129 l 183 -129 l 520 1041 l 608 1041 "},"Τ":{"x_min":-0.4375,"x_max":777.453125,"ha":839,"o":"m 777 893 l 458 893 l 458 0 l 319 0 l 319 892 l 0 892 l 0 1013 l 777 1013 l 777 893 "},"y":{"x_min":0,"x_max":684.78125,"ha":771,"o":"m 684 738 l 388 -83 q 311 -216 356 -167 q 173 -279 252 -279 q 97 -266 133 -279 l 97 -149 q 132 -155 109 -151 q 168 -160 155 -160 q 240 -114 213 -160 q 274 -26 248 -98 l 0 738 l 137 737 l 341 139 l 548 737 l 684 738 "},"Π":{"x_min":0,"x_max":803,"ha":917,"o":"m 803 0 l 667 0 l 667 886 l 140 886 l 140 0 l 0 0 l 0 1012 l 803 1012 l 803 0 "},"ΐ":{"x_min":-111,"x_max":339,"ha":361,"o":"m 339 800 l 229 800 l 229 925 l 339 925 l 339 800 m -1 800 l -111 800 l -111 925 l -1 925 l -1 800 m 284 3 q 233 -10 258 -5 q 182 -15 207 -15 q 85 26 119 -15 q 42 200 42 79 l 42 737 l 167 737 l 168 215 q 172 141 168 157 q 226 101 183 101 q 248 103 239 101 q 284 112 257 104 l 284 3 m 302 1040 l 113 819 l 30 819 l 165 1040 l 302 1040 "},"g":{"x_min":0,"x_max":686,"ha":838,"o":"m 686 34 q 586 -213 686 -121 q 331 -306 487 -306 q 131 -252 216 -306 q 31 -84 31 -190 l 155 -84 q 228 -174 166 -138 q 345 -207 284 -207 q 514 -109 454 -207 q 564 89 564 -27 q 461 6 521 36 q 335 -23 401 -23 q 88 100 184 -23 q 0 370 0 215 q 87 634 0 522 q 330 758 183 758 q 457 728 398 758 q 564 644 515 699 l 564 737 l 686 737 l 686 34 m 582 367 q 529 560 582 481 q 358 652 468 652 q 189 561 250 652 q 135 369 135 482 q 189 176 135 255 q 361 85 251 85 q 529 176 468 85 q 582 367 582 255 "},"²":{"x_min":0,"x_max":442,"ha":539,"o":"m 442 383 l 0 383 q 91 566 0 492 q 260 668 176 617 q 354 798 354 727 q 315 875 354 845 q 227 905 277 905 q 136 869 173 905 q 99 761 99 833 l 14 761 q 82 922 14 864 q 232 974 141 974 q 379 926 316 974 q 442 797 442 878 q 351 635 442 704 q 183 539 321 611 q 92 455 92 491 l 442 455 l 442 383 "},"–":{"x_min":0,"x_max":705.5625,"ha":803,"o":"m 705 334 l 0 334 l 0 410 l 705 410 l 705 334 "},"Κ":{"x_min":0,"x_max":819.5625,"ha":893,"o":"m 819 0 l 650 0 l 294 509 l 139 356 l 139 0 l 0 0 l 0 1013 l 139 1013 l 139 526 l 626 1013 l 809 1013 l 395 600 l 819 0 "},"ƒ":{"x_min":-46.265625,"x_max":392,"ha":513,"o":"m 392 651 l 259 651 l 79 -279 l -46 -278 l 134 651 l 14 651 l 14 751 l 135 751 q 151 948 135 900 q 304 1041 185 1041 q 334 1040 319 1041 q 392 1034 348 1039 l 392 922 q 337 931 360 931 q 271 883 287 931 q 260 793 260 853 l 260 751 l 392 751 l 392 651 "},"e":{"x_min":0,"x_max":714,"ha":813,"o":"m 714 326 l 140 326 q 200 157 140 227 q 359 87 260 87 q 488 130 431 87 q 561 245 545 174 l 697 245 q 577 48 670 123 q 358 -26 484 -26 q 97 85 195 -26 q 0 363 0 197 q 94 642 0 529 q 358 765 195 765 q 626 627 529 765 q 714 326 714 503 m 576 429 q 507 583 564 522 q 355 650 445 650 q 206 583 266 650 q 140 429 152 522 l 576 429 "},"ό":{"x_min":0,"x_max":712,"ha":815,"o":"m 356 -25 q 94 91 194 -25 q 0 368 0 202 q 92 642 0 533 q 356 761 192 761 q 617 644 517 761 q 712 368 712 533 q 619 91 712 201 q 356 -25 520 -25 m 356 85 q 527 175 465 85 q 583 369 583 255 q 528 562 583 484 q 356 651 466 651 q 189 560 250 651 q 135 369 135 481 q 187 177 135 257 q 356 85 250 85 m 576 1040 l 387 819 l 303 819 l 438 1040 l 576 1040 "},"J":{"x_min":0,"x_max":588,"ha":699,"o":"m 588 279 q 287 -26 588 -26 q 58 73 126 -26 q 0 327 0 158 l 133 327 q 160 172 133 227 q 288 96 198 96 q 426 171 391 96 q 449 336 449 219 l 449 1013 l 588 1013 l 588 279 "},"»":{"x_min":-1,"x_max":503,"ha":601,"o":"m 503 302 l 280 136 l 281 256 l 429 373 l 281 486 l 280 608 l 503 440 l 503 302 m 221 302 l 0 136 l 0 255 l 145 372 l 0 486 l -1 608 l 221 440 l 221 302 "},"©":{"x_min":-3,"x_max":1008,"ha":1106,"o":"m 502 -7 q 123 151 263 -7 q -3 501 -3 294 q 123 851 -3 706 q 502 1011 263 1011 q 881 851 739 1011 q 1008 501 1008 708 q 883 151 1008 292 q 502 -7 744 -7 m 502 60 q 830 197 709 60 q 940 501 940 322 q 831 805 940 681 q 502 944 709 944 q 174 805 296 944 q 65 501 65 680 q 173 197 65 320 q 502 60 294 60 m 741 394 q 661 246 731 302 q 496 190 591 190 q 294 285 369 190 q 228 497 228 370 q 295 714 228 625 q 499 813 370 813 q 656 762 588 813 q 733 625 724 711 l 634 625 q 589 704 629 673 q 498 735 550 735 q 377 666 421 735 q 334 504 334 597 q 374 340 334 408 q 490 272 415 272 q 589 304 549 272 q 638 394 628 337 l 741 394 "},"ώ":{"x_min":0,"x_max":922,"ha":1030,"o":"m 687 1040 l 498 819 l 415 819 l 549 1040 l 687 1040 m 922 339 q 856 97 922 203 q 650 -26 780 -26 q 538 9 587 -26 q 461 103 489 44 q 387 12 436 46 q 277 -22 339 -22 q 69 97 147 -22 q 0 338 0 202 q 45 551 0 444 q 161 737 84 643 l 302 737 q 175 552 219 647 q 124 336 124 446 q 155 179 124 248 q 275 88 197 88 q 375 163 341 88 q 400 294 400 219 l 400 572 l 524 572 l 524 294 q 561 135 524 192 q 643 88 591 88 q 762 182 719 88 q 797 341 797 257 q 745 555 797 450 q 619 737 705 637 l 760 737 q 874 551 835 640 q 922 339 922 444 "},"^":{"x_min":193.0625,"x_max":598.609375,"ha":792,"o":"m 598 772 l 515 772 l 395 931 l 277 772 l 193 772 l 326 1013 l 462 1013 l 598 772 "},"«":{"x_min":0,"x_max":507.203125,"ha":604,"o":"m 506 136 l 284 302 l 284 440 l 506 608 l 507 485 l 360 371 l 506 255 l 506 136 m 222 136 l 0 302 l 0 440 l 222 608 l 221 486 l 73 373 l 222 256 l 222 136 "},"D":{"x_min":0,"x_max":828,"ha":935,"o":"m 389 1013 q 714 867 593 1013 q 828 521 828 729 q 712 161 828 309 q 382 0 587 0 l 0 0 l 0 1013 l 389 1013 m 376 124 q 607 247 523 124 q 681 510 681 355 q 607 771 681 662 q 376 896 522 896 l 139 896 l 139 124 l 376 124 "},"∙":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 585 l 0 585 l 0 738 l 142 738 l 142 585 "},"ÿ":{"x_min":0,"x_max":47,"ha":125,"o":"m 47 3 q 37 -7 47 -7 q 28 0 30 -7 q 39 -4 32 -4 q 45 3 45 -1 l 37 0 q 28 9 28 0 q 39 19 28 19 l 47 16 l 47 19 l 47 3 m 37 1 q 44 8 44 1 q 37 16 44 16 q 30 8 30 16 q 37 1 30 1 m 26 1 l 23 22 l 14 0 l 3 22 l 3 3 l 0 25 l 13 1 l 22 25 l 26 1 "},"w":{"x_min":0,"x_max":1009.71875,"ha":1100,"o":"m 1009 738 l 783 0 l 658 0 l 501 567 l 345 0 l 222 0 l 0 738 l 130 738 l 284 174 l 432 737 l 576 738 l 721 173 l 881 737 l 1009 738 "},"$":{"x_min":0,"x_max":700,"ha":793,"o":"m 664 717 l 542 717 q 490 825 531 785 q 381 872 450 865 l 381 551 q 620 446 540 522 q 700 241 700 370 q 618 45 700 116 q 381 -25 536 -25 l 381 -152 l 307 -152 l 307 -25 q 81 62 162 -25 q 0 297 0 149 l 124 297 q 169 146 124 204 q 307 81 215 89 l 307 441 q 80 536 148 469 q 13 725 13 603 q 96 910 13 839 q 307 982 180 982 l 307 1077 l 381 1077 l 381 982 q 574 917 494 982 q 664 717 664 845 m 307 565 l 307 872 q 187 831 233 872 q 142 724 142 791 q 180 618 142 656 q 307 565 218 580 m 381 76 q 562 237 562 96 q 517 361 562 313 q 381 423 472 409 l 381 76 "},"\\":{"x_min":-0.015625,"x_max":425.0625,"ha":522,"o":"m 425 -129 l 337 -129 l 0 1041 l 83 1041 l 425 -129 "},"µ":{"x_min":0,"x_max":697.21875,"ha":747,"o":"m 697 -4 q 629 -14 658 -14 q 498 97 513 -14 q 422 9 470 41 q 313 -23 374 -23 q 207 4 258 -23 q 119 81 156 32 l 119 -278 l 0 -278 l 0 738 l 124 738 l 124 343 q 165 173 124 246 q 308 83 216 83 q 452 178 402 83 q 493 359 493 255 l 493 738 l 617 738 l 617 214 q 623 136 617 160 q 673 92 637 92 q 697 96 684 92 l 697 -4 "},"Ι":{"x_min":42,"x_max":181,"ha":297,"o":"m 181 0 l 42 0 l 42 1013 l 181 1013 l 181 0 "},"Ύ":{"x_min":0,"x_max":1144.5,"ha":1214,"o":"m 1144 1012 l 807 416 l 807 0 l 667 0 l 667 416 l 325 1012 l 465 1012 l 736 533 l 1004 1012 l 1144 1012 m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 "},"’":{"x_min":0,"x_max":139,"ha":236,"o":"m 139 851 q 102 737 139 784 q 0 669 65 690 l 0 734 q 59 787 42 741 q 72 873 72 821 l 0 873 l 0 1013 l 139 1013 l 139 851 "},"Ν":{"x_min":0,"x_max":801,"ha":915,"o":"m 801 0 l 651 0 l 131 822 l 131 0 l 0 0 l 0 1013 l 151 1013 l 670 191 l 670 1013 l 801 1013 l 801 0 "},"-":{"x_min":8.71875,"x_max":350.390625,"ha":478,"o":"m 350 317 l 8 317 l 8 428 l 350 428 l 350 317 "},"Q":{"x_min":0,"x_max":968,"ha":1072,"o":"m 954 5 l 887 -79 l 744 35 q 622 -11 687 2 q 483 -26 556 -26 q 127 130 262 -26 q 0 504 0 279 q 127 880 0 728 q 484 1041 262 1041 q 841 884 708 1041 q 968 507 968 735 q 933 293 968 398 q 832 104 899 188 l 954 5 m 723 191 q 802 330 777 248 q 828 499 828 412 q 744 790 828 673 q 483 922 650 922 q 228 791 322 922 q 142 505 142 673 q 227 221 142 337 q 487 91 323 91 q 632 123 566 91 l 520 215 l 587 301 l 723 191 "},"ς":{"x_min":1,"x_max":676.28125,"ha":740,"o":"m 676 460 l 551 460 q 498 595 542 546 q 365 651 448 651 q 199 578 263 651 q 136 401 136 505 q 266 178 136 241 q 508 106 387 142 q 640 -50 640 62 q 625 -158 640 -105 q 583 -278 611 -211 l 465 -278 q 498 -182 490 -211 q 515 -80 515 -126 q 381 12 515 -15 q 134 91 197 51 q 1 388 1 179 q 100 651 1 542 q 354 761 199 761 q 587 680 498 761 q 676 460 676 599 "},"M":{"x_min":0,"x_max":954,"ha":1067,"o":"m 954 0 l 819 0 l 819 869 l 537 0 l 405 0 l 128 866 l 128 0 l 0 0 l 0 1013 l 200 1013 l 472 160 l 757 1013 l 954 1013 l 954 0 "},"Ψ":{"x_min":0,"x_max":1006,"ha":1094,"o":"m 1006 678 q 914 319 1006 429 q 571 200 814 200 l 571 0 l 433 0 l 433 200 q 92 319 194 200 q 0 678 0 429 l 0 1013 l 139 1013 l 139 679 q 191 417 139 492 q 433 326 255 326 l 433 1013 l 571 1013 l 571 326 l 580 326 q 813 423 747 326 q 868 679 868 502 l 868 1013 l 1006 1013 l 1006 678 "},"C":{"x_min":0,"x_max":886,"ha":944,"o":"m 886 379 q 760 87 886 201 q 455 -26 634 -26 q 112 136 236 -26 q 0 509 0 283 q 118 882 0 737 q 469 1041 245 1041 q 748 955 630 1041 q 879 708 879 859 l 745 708 q 649 862 724 805 q 473 920 573 920 q 219 791 312 920 q 136 509 136 675 q 217 229 136 344 q 470 99 311 99 q 672 179 591 99 q 753 379 753 259 l 886 379 "},"!":{"x_min":0,"x_max":138,"ha":236,"o":"m 138 684 q 116 409 138 629 q 105 244 105 299 l 33 244 q 16 465 33 313 q 0 684 0 616 l 0 1013 l 138 1013 l 138 684 m 138 0 l 0 0 l 0 151 l 138 151 l 138 0 "},"{":{"x_min":0,"x_max":480.5625,"ha":578,"o":"m 480 -286 q 237 -213 303 -286 q 187 -45 187 -159 q 194 48 187 -15 q 201 141 201 112 q 164 264 201 225 q 0 314 118 314 l 0 417 q 164 471 119 417 q 201 605 201 514 q 199 665 201 644 q 193 772 193 769 q 241 941 193 887 q 480 1015 308 1015 l 480 915 q 336 866 375 915 q 306 742 306 828 q 310 662 306 717 q 314 577 314 606 q 288 452 314 500 q 176 365 256 391 q 289 275 257 337 q 314 143 314 226 q 313 84 314 107 q 310 -11 310 -5 q 339 -131 310 -94 q 480 -182 377 -182 l 480 -286 "},"X":{"x_min":-0.015625,"x_max":854.15625,"ha":940,"o":"m 854 0 l 683 0 l 423 409 l 166 0 l 0 0 l 347 519 l 18 1013 l 186 1013 l 428 637 l 675 1013 l 836 1013 l 504 520 l 854 0 "},"#":{"x_min":0,"x_max":963.890625,"ha":1061,"o":"m 963 690 l 927 590 l 719 590 l 655 410 l 876 410 l 840 310 l 618 310 l 508 -3 l 393 -2 l 506 309 l 329 310 l 215 -2 l 102 -3 l 212 310 l 0 310 l 36 410 l 248 409 l 312 590 l 86 590 l 120 690 l 347 690 l 459 1006 l 573 1006 l 462 690 l 640 690 l 751 1006 l 865 1006 l 754 690 l 963 690 m 606 590 l 425 590 l 362 410 l 543 410 l 606 590 "},"ι":{"x_min":42,"x_max":284,"ha":361,"o":"m 284 3 q 233 -10 258 -5 q 182 -15 207 -15 q 85 26 119 -15 q 42 200 42 79 l 42 738 l 167 738 l 168 215 q 172 141 168 157 q 226 101 183 101 q 248 103 239 101 q 284 112 257 104 l 284 3 "},"Ά":{"x_min":0,"x_max":906.953125,"ha":982,"o":"m 283 1040 l 88 799 l 5 799 l 145 1040 l 283 1040 m 906 0 l 756 0 l 650 303 l 251 303 l 143 0 l 0 0 l 376 1012 l 529 1012 l 906 0 m 609 421 l 452 866 l 293 421 l 609 421 "},")":{"x_min":0,"x_max":318,"ha":415,"o":"m 318 365 q 257 25 318 191 q 87 -290 197 -141 l 0 -290 q 140 21 93 -128 q 193 360 193 189 q 141 704 193 537 q 0 1024 97 850 l 87 1024 q 257 706 197 871 q 318 365 318 542 "},"ε":{"x_min":0,"x_max":634.71875,"ha":714,"o":"m 634 234 q 527 38 634 110 q 300 -25 433 -25 q 98 29 183 -25 q 0 204 0 93 q 37 314 0 265 q 128 390 67 353 q 56 460 82 419 q 26 555 26 505 q 114 712 26 654 q 295 763 191 763 q 499 700 416 763 q 589 515 589 631 l 478 515 q 419 618 464 580 q 307 657 374 657 q 207 630 253 657 q 151 547 151 598 q 238 445 151 469 q 389 434 280 434 l 389 331 l 349 331 q 206 315 255 331 q 125 210 125 287 q 183 107 125 145 q 302 76 233 76 q 436 117 379 76 q 509 234 493 159 l 634 234 "},"Δ":{"x_min":0,"x_max":952.78125,"ha":1028,"o":"m 952 0 l 0 0 l 400 1013 l 551 1013 l 952 0 m 762 124 l 476 867 l 187 124 l 762 124 "},"}":{"x_min":0,"x_max":481,"ha":578,"o":"m 481 314 q 318 262 364 314 q 282 136 282 222 q 284 65 282 97 q 293 -58 293 -48 q 241 -217 293 -166 q 0 -286 174 -286 l 0 -182 q 143 -130 105 -182 q 171 -2 171 -93 q 168 81 171 22 q 165 144 165 140 q 188 275 165 229 q 306 365 220 339 q 191 455 224 391 q 165 588 165 505 q 168 681 165 624 q 171 742 171 737 q 141 865 171 827 q 0 915 102 915 l 0 1015 q 243 942 176 1015 q 293 773 293 888 q 287 675 293 741 q 282 590 282 608 q 318 466 282 505 q 481 417 364 417 l 481 314 "},"‰":{"x_min":-3,"x_max":1672,"ha":1821,"o":"m 846 0 q 664 76 732 0 q 603 244 603 145 q 662 412 603 344 q 846 489 729 489 q 1027 412 959 489 q 1089 244 1089 343 q 1029 76 1089 144 q 846 0 962 0 m 845 103 q 945 143 910 103 q 981 243 981 184 q 947 340 981 301 q 845 385 910 385 q 745 342 782 385 q 709 243 709 300 q 742 147 709 186 q 845 103 781 103 m 888 986 l 284 -25 l 199 -25 l 803 986 l 888 986 m 241 468 q 58 545 126 468 q -3 715 -3 615 q 56 881 -3 813 q 238 958 124 958 q 421 881 353 958 q 483 712 483 813 q 423 544 483 612 q 241 468 356 468 m 241 855 q 137 811 175 855 q 100 710 100 768 q 136 612 100 653 q 240 572 172 572 q 344 614 306 572 q 382 713 382 656 q 347 810 382 771 q 241 855 308 855 m 1428 0 q 1246 76 1314 0 q 1185 244 1185 145 q 1244 412 1185 344 q 1428 489 1311 489 q 1610 412 1542 489 q 1672 244 1672 343 q 1612 76 1672 144 q 1428 0 1545 0 m 1427 103 q 1528 143 1492 103 q 1564 243 1564 184 q 1530 340 1564 301 q 1427 385 1492 385 q 1327 342 1364 385 q 1291 243 1291 300 q 1324 147 1291 186 q 1427 103 1363 103 "},"a":{"x_min":0,"x_max":698.609375,"ha":794,"o":"m 698 0 q 661 -12 679 -7 q 615 -17 643 -17 q 536 12 564 -17 q 500 96 508 41 q 384 6 456 37 q 236 -25 312 -25 q 65 31 130 -25 q 0 194 0 88 q 118 390 0 334 q 328 435 180 420 q 488 483 476 451 q 495 523 495 504 q 442 619 495 584 q 325 654 389 654 q 209 617 257 654 q 152 513 161 580 l 33 513 q 123 705 33 633 q 332 772 207 772 q 528 712 448 772 q 617 531 617 645 l 617 163 q 624 108 617 126 q 664 90 632 90 l 698 94 l 698 0 m 491 262 l 491 372 q 272 329 350 347 q 128 201 128 294 q 166 113 128 144 q 264 83 205 83 q 414 130 346 83 q 491 262 491 183 "},"—":{"x_min":0,"x_max":941.671875,"ha":1039,"o":"m 941 334 l 0 334 l 0 410 l 941 410 l 941 334 "},"=":{"x_min":8.71875,"x_max":780.953125,"ha":792,"o":"m 780 510 l 8 510 l 8 606 l 780 606 l 780 510 m 780 235 l 8 235 l 8 332 l 780 332 l 780 235 "},"N":{"x_min":0,"x_max":801,"ha":914,"o":"m 801 0 l 651 0 l 131 823 l 131 0 l 0 0 l 0 1013 l 151 1013 l 670 193 l 670 1013 l 801 1013 l 801 0 "},"ρ":{"x_min":0,"x_max":712,"ha":797,"o":"m 712 369 q 620 94 712 207 q 362 -26 521 -26 q 230 2 292 -26 q 119 83 167 30 l 119 -278 l 0 -278 l 0 362 q 91 643 0 531 q 355 764 190 764 q 617 647 517 764 q 712 369 712 536 m 583 366 q 530 559 583 480 q 359 651 469 651 q 190 562 252 651 q 135 370 135 483 q 189 176 135 257 q 359 85 250 85 q 528 175 466 85 q 583 366 583 254 "},"2":{"x_min":59,"x_max":731,"ha":792,"o":"m 731 0 l 59 0 q 197 314 59 188 q 457 487 199 315 q 598 691 598 580 q 543 819 598 772 q 411 867 488 867 q 272 811 328 867 q 209 630 209 747 l 81 630 q 182 901 81 805 q 408 986 271 986 q 629 909 536 986 q 731 694 731 826 q 613 449 731 541 q 378 316 495 383 q 201 122 235 234 l 731 122 l 731 0 "},"¯":{"x_min":0,"x_max":941.671875,"ha":938,"o":"m 941 1033 l 0 1033 l 0 1109 l 941 1109 l 941 1033 "},"Z":{"x_min":0,"x_max":779,"ha":849,"o":"m 779 0 l 0 0 l 0 113 l 621 896 l 40 896 l 40 1013 l 779 1013 l 778 887 l 171 124 l 779 124 l 779 0 "},"u":{"x_min":0,"x_max":617,"ha":729,"o":"m 617 0 l 499 0 l 499 110 q 391 10 460 45 q 246 -25 322 -25 q 61 58 127 -25 q 0 258 0 136 l 0 738 l 125 738 l 125 284 q 156 148 125 202 q 273 82 197 82 q 433 165 369 82 q 493 340 493 243 l 493 738 l 617 738 l 617 0 "},"k":{"x_min":0,"x_max":612.484375,"ha":697,"o":"m 612 738 l 338 465 l 608 0 l 469 0 l 251 382 l 121 251 l 121 0 l 0 0 l 0 1013 l 121 1013 l 121 402 l 456 738 l 612 738 "},"Η":{"x_min":0,"x_max":803,"ha":917,"o":"m 803 0 l 667 0 l 667 475 l 140 475 l 140 0 l 0 0 l 0 1013 l 140 1013 l 140 599 l 667 599 l 667 1013 l 803 1013 l 803 0 "},"Α":{"x_min":0,"x_max":906.953125,"ha":985,"o":"m 906 0 l 756 0 l 650 303 l 251 303 l 143 0 l 0 0 l 376 1013 l 529 1013 l 906 0 m 609 421 l 452 866 l 293 421 l 609 421 "},"s":{"x_min":0,"x_max":604,"ha":697,"o":"m 604 217 q 501 36 604 104 q 292 -23 411 -23 q 86 43 166 -23 q 0 238 0 114 l 121 237 q 175 122 121 164 q 300 85 223 85 q 415 112 363 85 q 479 207 479 147 q 361 309 479 276 q 140 372 141 370 q 21 544 21 426 q 111 708 21 647 q 298 761 190 761 q 492 705 413 761 q 583 531 583 643 l 462 531 q 412 625 462 594 q 298 657 363 657 q 199 636 242 657 q 143 558 143 608 q 262 454 143 486 q 484 394 479 397 q 604 217 604 341 "},"B":{"x_min":0,"x_max":778,"ha":876,"o":"m 580 546 q 724 469 670 535 q 778 311 778 403 q 673 83 778 171 q 432 0 575 0 l 0 0 l 0 1013 l 411 1013 q 629 957 541 1013 q 732 768 732 892 q 691 633 732 693 q 580 546 650 572 m 393 899 l 139 899 l 139 588 l 379 588 q 521 624 462 588 q 592 744 592 667 q 531 859 592 819 q 393 899 471 899 m 419 124 q 566 169 504 124 q 635 303 635 219 q 559 436 635 389 q 402 477 494 477 l 139 477 l 139 124 l 419 124 "},"…":{"x_min":0,"x_max":614,"ha":708,"o":"m 142 0 l 0 0 l 0 151 l 142 151 l 142 0 m 378 0 l 236 0 l 236 151 l 378 151 l 378 0 m 614 0 l 472 0 l 472 151 l 614 151 l 614 0 "},"?":{"x_min":0,"x_max":607,"ha":704,"o":"m 607 777 q 543 599 607 674 q 422 474 482 537 q 357 272 357 391 l 236 272 q 297 487 236 395 q 411 619 298 490 q 474 762 474 691 q 422 885 474 838 q 301 933 371 933 q 179 880 228 933 q 124 706 124 819 l 0 706 q 94 963 0 872 q 302 1044 177 1044 q 511 973 423 1044 q 607 777 607 895 m 370 0 l 230 0 l 230 151 l 370 151 l 370 0 "},"H":{"x_min":0,"x_max":803,"ha":915,"o":"m 803 0 l 667 0 l 667 475 l 140 475 l 140 0 l 0 0 l 0 1013 l 140 1013 l 140 599 l 667 599 l 667 1013 l 803 1013 l 803 0 "},"ν":{"x_min":0,"x_max":675,"ha":761,"o":"m 675 738 l 404 0 l 272 0 l 0 738 l 133 738 l 340 147 l 541 738 l 675 738 "},"c":{"x_min":1,"x_max":701.390625,"ha":775,"o":"m 701 264 q 584 53 681 133 q 353 -26 487 -26 q 91 91 188 -26 q 1 370 1 201 q 92 645 1 537 q 353 761 190 761 q 572 688 479 761 q 690 493 666 615 l 556 493 q 487 606 545 562 q 356 650 428 650 q 186 563 246 650 q 134 372 134 487 q 188 179 134 258 q 359 88 250 88 q 492 136 437 88 q 566 264 548 185 l 701 264 "},"¶":{"x_min":0,"x_max":566.671875,"ha":678,"o":"m 21 892 l 52 892 l 98 761 l 145 892 l 176 892 l 178 741 l 157 741 l 157 867 l 108 741 l 88 741 l 40 871 l 40 741 l 21 741 l 21 892 m 308 854 l 308 731 q 252 691 308 691 q 227 691 240 691 q 207 696 213 695 l 207 712 l 253 706 q 288 733 288 706 l 288 763 q 244 741 279 741 q 193 797 193 741 q 261 860 193 860 q 287 860 273 860 q 308 854 302 855 m 288 842 l 263 843 q 213 796 213 843 q 248 756 213 756 q 288 796 288 756 l 288 842 m 566 988 l 502 988 l 502 -1 l 439 -1 l 439 988 l 317 988 l 317 -1 l 252 -1 l 252 602 q 81 653 155 602 q 0 805 0 711 q 101 989 0 918 q 309 1053 194 1053 l 566 1053 l 566 988 "},"β":{"x_min":0,"x_max":660,"ha":745,"o":"m 471 550 q 610 450 561 522 q 660 280 660 378 q 578 64 660 151 q 367 -22 497 -22 q 239 5 299 -22 q 126 82 178 32 l 126 -278 l 0 -278 l 0 593 q 54 903 0 801 q 318 1042 127 1042 q 519 964 436 1042 q 603 771 603 887 q 567 644 603 701 q 471 550 532 586 m 337 79 q 476 138 418 79 q 535 279 535 198 q 427 437 535 386 q 226 477 344 477 l 226 583 q 398 620 329 583 q 486 762 486 668 q 435 884 486 833 q 312 935 384 935 q 169 861 219 935 q 126 698 126 797 l 126 362 q 170 169 126 242 q 337 79 224 79 "},"Μ":{"x_min":0,"x_max":954,"ha":1068,"o":"m 954 0 l 819 0 l 819 868 l 537 0 l 405 0 l 128 865 l 128 0 l 0 0 l 0 1013 l 199 1013 l 472 158 l 758 1013 l 954 1013 l 954 0 "},"Ό":{"x_min":0.109375,"x_max":1120,"ha":1217,"o":"m 1120 505 q 994 132 1120 282 q 642 -29 861 -29 q 290 130 422 -29 q 167 505 167 280 q 294 883 167 730 q 650 1046 430 1046 q 999 882 868 1046 q 1120 505 1120 730 m 977 504 q 896 784 977 669 q 644 915 804 915 q 391 785 484 915 q 307 504 307 669 q 391 224 307 339 q 644 95 486 95 q 894 224 803 95 q 977 504 977 339 m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 "},"Ή":{"x_min":0,"x_max":1158,"ha":1275,"o":"m 1158 0 l 1022 0 l 1022 475 l 496 475 l 496 0 l 356 0 l 356 1012 l 496 1012 l 496 599 l 1022 599 l 1022 1012 l 1158 1012 l 1158 0 m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 "},"•":{"x_min":0,"x_max":663.890625,"ha":775,"o":"m 663 529 q 566 293 663 391 q 331 196 469 196 q 97 294 194 196 q 0 529 0 393 q 96 763 0 665 q 331 861 193 861 q 566 763 469 861 q 663 529 663 665 "},"¥":{"x_min":0.1875,"x_max":819.546875,"ha":886,"o":"m 563 561 l 697 561 l 696 487 l 520 487 l 482 416 l 482 380 l 697 380 l 695 308 l 482 308 l 482 0 l 342 0 l 342 308 l 125 308 l 125 380 l 342 380 l 342 417 l 303 487 l 125 487 l 125 561 l 258 561 l 0 1013 l 140 1013 l 411 533 l 679 1013 l 819 1013 l 563 561 "},"(":{"x_min":0,"x_max":318.0625,"ha":415,"o":"m 318 -290 l 230 -290 q 61 23 122 -142 q 0 365 0 190 q 62 712 0 540 q 230 1024 119 869 l 318 1024 q 175 705 219 853 q 125 360 125 542 q 176 22 125 187 q 318 -290 223 -127 "},"U":{"x_min":0,"x_max":796,"ha":904,"o":"m 796 393 q 681 93 796 212 q 386 -25 566 -25 q 101 95 208 -25 q 0 393 0 211 l 0 1013 l 138 1013 l 138 391 q 204 191 138 270 q 394 107 276 107 q 586 191 512 107 q 656 391 656 270 l 656 1013 l 796 1013 l 796 393 "},"γ":{"x_min":0.5,"x_max":744.953125,"ha":822,"o":"m 744 737 l 463 54 l 463 -278 l 338 -278 l 338 54 l 154 495 q 104 597 124 569 q 13 651 67 651 l 0 651 l 0 751 l 39 753 q 168 711 121 753 q 242 594 207 676 l 403 208 l 617 737 l 744 737 "},"α":{"x_min":0,"x_max":765.5625,"ha":809,"o":"m 765 -4 q 698 -14 726 -14 q 564 97 586 -14 q 466 7 525 40 q 337 -26 407 -26 q 88 98 186 -26 q 0 369 0 212 q 88 637 0 525 q 337 760 184 760 q 465 728 407 760 q 563 637 524 696 l 563 739 l 685 739 l 685 222 q 693 141 685 168 q 748 94 708 94 q 765 96 760 94 l 765 -4 m 584 371 q 531 562 584 485 q 360 653 470 653 q 192 566 254 653 q 135 379 135 489 q 186 181 135 261 q 358 84 247 84 q 528 176 465 84 q 584 371 584 260 "},"F":{"x_min":0,"x_max":683.328125,"ha":717,"o":"m 683 888 l 140 888 l 140 583 l 613 583 l 613 458 l 140 458 l 140 0 l 0 0 l 0 1013 l 683 1013 l 683 888 "},"­":{"x_min":0,"x_max":705.5625,"ha":803,"o":"m 705 334 l 0 334 l 0 410 l 705 410 l 705 334 "},":":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 585 l 0 585 l 0 738 l 142 738 l 142 585 m 142 0 l 0 0 l 0 151 l 142 151 l 142 0 "},"Χ":{"x_min":0,"x_max":854.171875,"ha":935,"o":"m 854 0 l 683 0 l 423 409 l 166 0 l 0 0 l 347 519 l 18 1013 l 186 1013 l 427 637 l 675 1013 l 836 1013 l 504 521 l 854 0 "},"*":{"x_min":116,"x_max":674,"ha":792,"o":"m 674 768 l 475 713 l 610 544 l 517 477 l 394 652 l 272 478 l 178 544 l 314 713 l 116 766 l 153 876 l 341 812 l 342 1013 l 446 1013 l 446 811 l 635 874 l 674 768 "},"†":{"x_min":0,"x_max":777,"ha":835,"o":"m 458 804 l 777 804 l 777 683 l 458 683 l 458 0 l 319 0 l 319 681 l 0 683 l 0 804 l 319 804 l 319 1015 l 458 1013 l 458 804 "},"°":{"x_min":0,"x_max":347,"ha":444,"o":"m 173 802 q 43 856 91 802 q 0 977 0 905 q 45 1101 0 1049 q 173 1153 90 1153 q 303 1098 255 1153 q 347 977 347 1049 q 303 856 347 905 q 173 802 256 802 m 173 884 q 238 910 214 884 q 262 973 262 937 q 239 1038 262 1012 q 173 1064 217 1064 q 108 1037 132 1064 q 85 973 85 1010 q 108 910 85 937 q 173 884 132 884 "},"V":{"x_min":0,"x_max":862.71875,"ha":940,"o":"m 862 1013 l 505 0 l 361 0 l 0 1013 l 143 1013 l 434 165 l 718 1012 l 862 1013 "},"Ξ":{"x_min":0,"x_max":734.71875,"ha":763,"o":"m 723 889 l 9 889 l 9 1013 l 723 1013 l 723 889 m 673 463 l 61 463 l 61 589 l 673 589 l 673 463 m 734 0 l 0 0 l 0 124 l 734 124 l 734 0 "}," ":{"x_min":0,"x_max":0,"ha":853},"Ϋ":{"x_min":0.328125,"x_max":819.515625,"ha":889,"o":"m 588 1046 l 460 1046 l 460 1189 l 588 1189 l 588 1046 m 360 1046 l 232 1046 l 232 1189 l 360 1189 l 360 1046 m 819 1012 l 482 416 l 482 0 l 342 0 l 342 416 l 0 1012 l 140 1012 l 411 533 l 679 1012 l 819 1012 "},"0":{"x_min":73,"x_max":715,"ha":792,"o":"m 394 -29 q 153 129 242 -29 q 73 479 73 272 q 152 829 73 687 q 394 989 241 989 q 634 829 545 989 q 715 479 715 684 q 635 129 715 270 q 394 -29 546 -29 m 394 89 q 546 211 489 89 q 598 479 598 322 q 548 748 598 640 q 394 871 491 871 q 241 748 298 871 q 190 479 190 637 q 239 211 190 319 q 394 89 296 89 "},"”":{"x_min":0,"x_max":347,"ha":454,"o":"m 139 851 q 102 737 139 784 q 0 669 65 690 l 0 734 q 59 787 42 741 q 72 873 72 821 l 0 873 l 0 1013 l 139 1013 l 139 851 m 347 851 q 310 737 347 784 q 208 669 273 690 l 208 734 q 267 787 250 741 q 280 873 280 821 l 208 873 l 208 1013 l 347 1013 l 347 851 "},"@":{"x_min":0,"x_max":1260,"ha":1357,"o":"m 1098 -45 q 877 -160 1001 -117 q 633 -203 752 -203 q 155 -29 327 -203 q 0 360 0 127 q 176 802 0 616 q 687 1008 372 1008 q 1123 854 969 1008 q 1260 517 1260 718 q 1155 216 1260 341 q 868 82 1044 82 q 772 106 801 82 q 737 202 737 135 q 647 113 700 144 q 527 82 594 82 q 367 147 420 82 q 314 312 314 212 q 401 565 314 452 q 639 690 498 690 q 810 588 760 690 l 849 668 l 938 668 q 877 441 900 532 q 833 226 833 268 q 853 182 833 198 q 902 167 873 167 q 1088 272 1012 167 q 1159 512 1159 372 q 1051 793 1159 681 q 687 925 925 925 q 248 747 415 925 q 97 361 97 586 q 226 26 97 159 q 627 -122 370 -122 q 856 -87 737 -122 q 1061 8 976 -53 l 1098 -45 m 786 488 q 738 580 777 545 q 643 615 700 615 q 483 517 548 615 q 425 322 425 430 q 457 203 425 250 q 552 156 490 156 q 722 273 665 156 q 786 488 738 309 "},"Ί":{"x_min":0,"x_max":499,"ha":613,"o":"m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 m 499 0 l 360 0 l 360 1012 l 499 1012 l 499 0 "},"i":{"x_min":14,"x_max":136,"ha":275,"o":"m 136 873 l 14 873 l 14 1013 l 136 1013 l 136 873 m 136 0 l 14 0 l 14 737 l 136 737 l 136 0 "},"Β":{"x_min":0,"x_max":778,"ha":877,"o":"m 580 545 q 724 468 671 534 q 778 310 778 402 q 673 83 778 170 q 432 0 575 0 l 0 0 l 0 1013 l 411 1013 q 629 957 541 1013 q 732 768 732 891 q 691 632 732 692 q 580 545 650 571 m 393 899 l 139 899 l 139 587 l 379 587 q 521 623 462 587 q 592 744 592 666 q 531 859 592 819 q 393 899 471 899 m 419 124 q 566 169 504 124 q 635 302 635 219 q 559 435 635 388 q 402 476 494 476 l 139 476 l 139 124 l 419 124 "},"υ":{"x_min":0,"x_max":617,"ha":725,"o":"m 617 352 q 540 94 617 199 q 308 -24 455 -24 q 76 94 161 -24 q 0 352 0 199 l 0 739 l 126 739 l 126 355 q 169 185 126 257 q 312 98 220 98 q 451 185 402 98 q 492 355 492 257 l 492 739 l 617 739 l 617 352 "},"]":{"x_min":0,"x_max":275,"ha":372,"o":"m 275 -281 l 0 -281 l 0 -187 l 151 -187 l 151 920 l 0 920 l 0 1013 l 275 1013 l 275 -281 "},"m":{"x_min":0,"x_max":1019,"ha":1128,"o":"m 1019 0 l 897 0 l 897 454 q 860 591 897 536 q 739 660 816 660 q 613 586 659 660 q 573 436 573 522 l 573 0 l 447 0 l 447 455 q 412 591 447 535 q 294 657 372 657 q 165 586 213 657 q 122 437 122 521 l 122 0 l 0 0 l 0 738 l 117 738 l 117 640 q 202 730 150 697 q 316 763 254 763 q 437 730 381 763 q 525 642 494 697 q 621 731 559 700 q 753 763 682 763 q 943 694 867 763 q 1019 512 1019 625 l 1019 0 "},"χ":{"x_min":8.328125,"x_max":780.5625,"ha":815,"o":"m 780 -278 q 715 -294 747 -294 q 616 -257 663 -294 q 548 -175 576 -227 l 379 133 l 143 -277 l 9 -277 l 313 254 l 163 522 q 127 586 131 580 q 36 640 91 640 q 8 637 27 640 l 8 752 l 52 757 q 162 719 113 757 q 236 627 200 690 l 383 372 l 594 737 l 726 737 l 448 250 l 625 -69 q 670 -153 647 -110 q 743 -188 695 -188 q 780 -184 759 -188 l 780 -278 "},"8":{"x_min":55,"x_max":736,"ha":792,"o":"m 571 527 q 694 424 652 491 q 736 280 736 358 q 648 71 736 158 q 395 -26 551 -26 q 142 69 238 -26 q 55 279 55 157 q 96 425 55 359 q 220 527 138 491 q 120 615 153 562 q 88 726 88 668 q 171 904 88 827 q 395 986 261 986 q 618 905 529 986 q 702 727 702 830 q 670 616 702 667 q 571 527 638 565 m 394 565 q 519 610 475 565 q 563 717 563 655 q 521 823 563 781 q 392 872 474 872 q 265 824 312 872 q 224 720 224 783 q 265 613 224 656 q 394 565 312 565 m 395 91 q 545 150 488 91 q 597 280 597 204 q 546 408 597 355 q 395 465 492 465 q 244 408 299 465 q 194 280 194 356 q 244 150 194 203 q 395 91 299 91 "},"ί":{"x_min":42,"x_max":326.71875,"ha":361,"o":"m 284 3 q 233 -10 258 -5 q 182 -15 207 -15 q 85 26 119 -15 q 42 200 42 79 l 42 737 l 167 737 l 168 215 q 172 141 168 157 q 226 101 183 101 q 248 102 239 101 q 284 112 257 104 l 284 3 m 326 1040 l 137 819 l 54 819 l 189 1040 l 326 1040 "},"Ζ":{"x_min":0,"x_max":779.171875,"ha":850,"o":"m 779 0 l 0 0 l 0 113 l 620 896 l 40 896 l 40 1013 l 779 1013 l 779 887 l 170 124 l 779 124 l 779 0 "},"R":{"x_min":0,"x_max":781.953125,"ha":907,"o":"m 781 0 l 623 0 q 587 242 590 52 q 407 433 585 433 l 138 433 l 138 0 l 0 0 l 0 1013 l 396 1013 q 636 946 539 1013 q 749 731 749 868 q 711 597 749 659 q 608 502 674 534 q 718 370 696 474 q 729 207 722 352 q 781 26 736 62 l 781 0 m 373 551 q 533 594 465 551 q 614 731 614 645 q 532 859 614 815 q 373 896 465 896 l 138 896 l 138 551 l 373 551 "},"o":{"x_min":0,"x_max":713,"ha":821,"o":"m 357 -25 q 94 91 194 -25 q 0 368 0 202 q 93 642 0 533 q 357 761 193 761 q 618 644 518 761 q 713 368 713 533 q 619 91 713 201 q 357 -25 521 -25 m 357 85 q 528 175 465 85 q 584 369 584 255 q 529 562 584 484 q 357 651 467 651 q 189 560 250 651 q 135 369 135 481 q 187 177 135 257 q 357 85 250 85 "},"5":{"x_min":54.171875,"x_max":738,"ha":792,"o":"m 738 314 q 626 60 738 153 q 382 -23 526 -23 q 155 47 248 -23 q 54 256 54 125 l 183 256 q 259 132 204 174 q 382 91 314 91 q 533 149 471 91 q 602 314 602 213 q 538 469 602 411 q 386 528 475 528 q 284 506 332 528 q 197 439 237 484 l 81 439 l 159 958 l 684 958 l 684 840 l 254 840 l 214 579 q 306 627 258 612 q 407 643 354 643 q 636 552 540 643 q 738 314 738 457 "},"7":{"x_min":58.71875,"x_max":730.953125,"ha":792,"o":"m 730 839 q 469 448 560 641 q 335 0 378 255 l 192 0 q 328 441 235 252 q 593 830 421 630 l 58 830 l 58 958 l 730 958 l 730 839 "},"K":{"x_min":0,"x_max":819.46875,"ha":906,"o":"m 819 0 l 649 0 l 294 509 l 139 355 l 139 0 l 0 0 l 0 1013 l 139 1013 l 139 526 l 626 1013 l 809 1013 l 395 600 l 819 0 "},",":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 -12 q 105 -132 142 -82 q 0 -205 68 -182 l 0 -138 q 57 -82 40 -124 q 70 0 70 -51 l 0 0 l 0 151 l 142 151 l 142 -12 "},"d":{"x_min":0,"x_max":683,"ha":796,"o":"m 683 0 l 564 0 l 564 93 q 456 6 516 38 q 327 -25 395 -25 q 87 100 181 -25 q 0 365 0 215 q 90 639 0 525 q 343 763 187 763 q 564 647 486 763 l 564 1013 l 683 1013 l 683 0 m 582 373 q 529 562 582 484 q 361 653 468 653 q 190 561 253 653 q 135 365 135 479 q 189 175 135 254 q 358 85 251 85 q 529 178 468 85 q 582 373 582 258 "},"¨":{"x_min":-109,"x_max":247,"ha":232,"o":"m 247 1046 l 119 1046 l 119 1189 l 247 1189 l 247 1046 m 19 1046 l -109 1046 l -109 1189 l 19 1189 l 19 1046 "},"E":{"x_min":0,"x_max":736.109375,"ha":789,"o":"m 736 0 l 0 0 l 0 1013 l 725 1013 l 725 889 l 139 889 l 139 585 l 677 585 l 677 467 l 139 467 l 139 125 l 736 125 l 736 0 "},"Y":{"x_min":0,"x_max":820,"ha":886,"o":"m 820 1013 l 482 416 l 482 0 l 342 0 l 342 416 l 0 1013 l 140 1013 l 411 534 l 679 1012 l 820 1013 "},"\"":{"x_min":0,"x_max":299,"ha":396,"o":"m 299 606 l 203 606 l 203 988 l 299 988 l 299 606 m 96 606 l 0 606 l 0 988 l 96 988 l 96 606 "},"‹":{"x_min":17.984375,"x_max":773.609375,"ha":792,"o":"m 773 40 l 18 376 l 17 465 l 773 799 l 773 692 l 159 420 l 773 149 l 773 40 "},"„":{"x_min":0,"x_max":364,"ha":467,"o":"m 141 -12 q 104 -132 141 -82 q 0 -205 67 -182 l 0 -138 q 56 -82 40 -124 q 69 0 69 -51 l 0 0 l 0 151 l 141 151 l 141 -12 m 364 -12 q 327 -132 364 -82 q 222 -205 290 -182 l 222 -138 q 279 -82 262 -124 q 292 0 292 -51 l 222 0 l 222 151 l 364 151 l 364 -12 "},"δ":{"x_min":1,"x_max":710,"ha":810,"o":"m 710 360 q 616 87 710 196 q 356 -28 518 -28 q 99 82 197 -28 q 1 356 1 192 q 100 606 1 509 q 355 703 199 703 q 180 829 288 754 q 70 903 124 866 l 70 1012 l 643 1012 l 643 901 l 258 901 q 462 763 422 794 q 636 592 577 677 q 710 360 710 485 m 584 365 q 552 501 584 447 q 451 602 521 555 q 372 611 411 611 q 197 541 258 611 q 136 355 136 472 q 190 171 136 245 q 358 85 252 85 q 528 173 465 85 q 584 365 584 252 "},"έ":{"x_min":0,"x_max":634.71875,"ha":714,"o":"m 634 234 q 527 38 634 110 q 300 -25 433 -25 q 98 29 183 -25 q 0 204 0 93 q 37 313 0 265 q 128 390 67 352 q 56 459 82 419 q 26 555 26 505 q 114 712 26 654 q 295 763 191 763 q 499 700 416 763 q 589 515 589 631 l 478 515 q 419 618 464 580 q 307 657 374 657 q 207 630 253 657 q 151 547 151 598 q 238 445 151 469 q 389 434 280 434 l 389 331 l 349 331 q 206 315 255 331 q 125 210 125 287 q 183 107 125 145 q 302 76 233 76 q 436 117 379 76 q 509 234 493 159 l 634 234 m 520 1040 l 331 819 l 248 819 l 383 1040 l 520 1040 "},"ω":{"x_min":0,"x_max":922,"ha":1031,"o":"m 922 339 q 856 97 922 203 q 650 -26 780 -26 q 538 9 587 -26 q 461 103 489 44 q 387 12 436 46 q 277 -22 339 -22 q 69 97 147 -22 q 0 339 0 203 q 45 551 0 444 q 161 738 84 643 l 302 738 q 175 553 219 647 q 124 336 124 446 q 155 179 124 249 q 275 88 197 88 q 375 163 341 88 q 400 294 400 219 l 400 572 l 524 572 l 524 294 q 561 135 524 192 q 643 88 591 88 q 762 182 719 88 q 797 342 797 257 q 745 556 797 450 q 619 738 705 638 l 760 738 q 874 551 835 640 q 922 339 922 444 "},"´":{"x_min":0,"x_max":96,"ha":251,"o":"m 96 606 l 0 606 l 0 988 l 96 988 l 96 606 "},"±":{"x_min":11,"x_max":781,"ha":792,"o":"m 781 490 l 446 490 l 446 255 l 349 255 l 349 490 l 11 490 l 11 586 l 349 586 l 349 819 l 446 819 l 446 586 l 781 586 l 781 490 m 781 21 l 11 21 l 11 115 l 781 115 l 781 21 "},"|":{"x_min":343,"x_max":449,"ha":792,"o":"m 449 462 l 343 462 l 343 986 l 449 986 l 449 462 m 449 -242 l 343 -242 l 343 280 l 449 280 l 449 -242 "},"ϋ":{"x_min":0,"x_max":617,"ha":725,"o":"m 482 800 l 372 800 l 372 925 l 482 925 l 482 800 m 239 800 l 129 800 l 129 925 l 239 925 l 239 800 m 617 352 q 540 93 617 199 q 308 -24 455 -24 q 76 93 161 -24 q 0 352 0 199 l 0 738 l 126 738 l 126 354 q 169 185 126 257 q 312 98 220 98 q 451 185 402 98 q 492 354 492 257 l 492 738 l 617 738 l 617 352 "},"§":{"x_min":0,"x_max":593,"ha":690,"o":"m 593 425 q 554 312 593 369 q 467 233 516 254 q 537 83 537 172 q 459 -74 537 -12 q 288 -133 387 -133 q 115 -69 184 -133 q 47 96 47 -6 l 166 96 q 199 7 166 40 q 288 -26 232 -26 q 371 -5 332 -26 q 420 60 420 21 q 311 201 420 139 q 108 309 210 255 q 0 490 0 383 q 33 602 0 551 q 124 687 66 654 q 75 743 93 712 q 58 812 58 773 q 133 984 58 920 q 300 1043 201 1043 q 458 987 394 1043 q 529 814 529 925 l 411 814 q 370 908 404 877 q 289 939 336 939 q 213 911 246 939 q 180 841 180 883 q 286 720 180 779 q 484 612 480 615 q 593 425 593 534 m 467 409 q 355 544 467 473 q 196 630 228 612 q 146 587 162 609 q 124 525 124 558 q 239 387 124 462 q 398 298 369 315 q 448 345 429 316 q 467 409 467 375 "},"b":{"x_min":0,"x_max":685,"ha":783,"o":"m 685 372 q 597 99 685 213 q 347 -25 501 -25 q 219 5 277 -25 q 121 93 161 36 l 121 0 l 0 0 l 0 1013 l 121 1013 l 121 634 q 214 723 157 692 q 341 754 272 754 q 591 637 493 754 q 685 372 685 526 m 554 356 q 499 550 554 470 q 328 644 437 644 q 162 556 223 644 q 108 369 108 478 q 160 176 108 256 q 330 83 221 83 q 498 169 435 83 q 554 356 554 245 "},"q":{"x_min":0,"x_max":683,"ha":876,"o":"m 683 -278 l 564 -278 l 564 97 q 474 8 533 39 q 345 -23 415 -23 q 91 93 188 -23 q 0 364 0 203 q 87 635 0 522 q 337 760 184 760 q 466 727 408 760 q 564 637 523 695 l 564 737 l 683 737 l 683 -278 m 582 375 q 527 564 582 488 q 358 652 466 652 q 190 565 253 652 q 135 377 135 488 q 189 179 135 261 q 361 84 251 84 q 530 179 469 84 q 582 375 582 260 "},"Ω":{"x_min":-0.171875,"x_max":969.5625,"ha":1068,"o":"m 969 0 l 555 0 l 555 123 q 744 308 675 194 q 814 558 814 423 q 726 812 814 709 q 484 922 633 922 q 244 820 334 922 q 154 567 154 719 q 223 316 154 433 q 412 123 292 199 l 412 0 l 0 0 l 0 124 l 217 124 q 68 327 122 210 q 15 572 15 444 q 144 911 15 781 q 484 1041 274 1041 q 822 909 691 1041 q 953 569 953 777 q 899 326 953 443 q 750 124 846 210 l 969 124 l 969 0 "},"ύ":{"x_min":0,"x_max":617,"ha":725,"o":"m 617 352 q 540 93 617 199 q 308 -24 455 -24 q 76 93 161 -24 q 0 352 0 199 l 0 738 l 126 738 l 126 354 q 169 185 126 257 q 312 98 220 98 q 451 185 402 98 q 492 354 492 257 l 492 738 l 617 738 l 617 352 m 535 1040 l 346 819 l 262 819 l 397 1040 l 535 1040 "},"z":{"x_min":-0.015625,"x_max":613.890625,"ha":697,"o":"m 613 0 l 0 0 l 0 100 l 433 630 l 20 630 l 20 738 l 594 738 l 593 636 l 163 110 l 613 110 l 613 0 "},"™":{"x_min":0,"x_max":894,"ha":1000,"o":"m 389 951 l 229 951 l 229 503 l 160 503 l 160 951 l 0 951 l 0 1011 l 389 1011 l 389 951 m 894 503 l 827 503 l 827 939 l 685 503 l 620 503 l 481 937 l 481 503 l 417 503 l 417 1011 l 517 1011 l 653 580 l 796 1010 l 894 1011 l 894 503 "},"ή":{"x_min":0.78125,"x_max":697,"ha":810,"o":"m 697 -278 l 572 -278 l 572 454 q 540 587 572 536 q 425 650 501 650 q 271 579 337 650 q 206 420 206 509 l 206 0 l 81 0 l 81 489 q 73 588 81 562 q 0 644 56 644 l 0 741 q 68 755 38 755 q 158 721 124 755 q 200 630 193 687 q 297 726 234 692 q 434 761 359 761 q 620 692 544 761 q 697 516 697 624 l 697 -278 m 479 1040 l 290 819 l 207 819 l 341 1040 l 479 1040 "},"Θ":{"x_min":0,"x_max":960,"ha":1056,"o":"m 960 507 q 833 129 960 280 q 476 -32 698 -32 q 123 129 255 -32 q 0 507 0 280 q 123 883 0 732 q 476 1045 255 1045 q 832 883 696 1045 q 960 507 960 732 m 817 500 q 733 789 817 669 q 476 924 639 924 q 223 792 317 924 q 142 507 142 675 q 222 222 142 339 q 476 89 315 89 q 730 218 636 89 q 817 500 817 334 m 716 449 l 243 449 l 243 571 l 716 571 l 716 449 "},"®":{"x_min":-3,"x_max":1008,"ha":1106,"o":"m 503 532 q 614 562 566 532 q 672 658 672 598 q 614 747 672 716 q 503 772 569 772 l 338 772 l 338 532 l 503 532 m 502 -7 q 123 151 263 -7 q -3 501 -3 294 q 123 851 -3 706 q 502 1011 263 1011 q 881 851 739 1011 q 1008 501 1008 708 q 883 151 1008 292 q 502 -7 744 -7 m 502 60 q 830 197 709 60 q 940 501 940 322 q 831 805 940 681 q 502 944 709 944 q 174 805 296 944 q 65 501 65 680 q 173 197 65 320 q 502 60 294 60 m 788 146 l 678 146 q 653 316 655 183 q 527 449 652 449 l 338 449 l 338 146 l 241 146 l 241 854 l 518 854 q 688 808 621 854 q 766 658 766 755 q 739 563 766 607 q 668 497 713 519 q 751 331 747 472 q 788 164 756 190 l 788 146 "},"~":{"x_min":0,"x_max":833,"ha":931,"o":"m 833 958 q 778 753 833 831 q 594 665 716 665 q 402 761 502 665 q 240 857 302 857 q 131 795 166 857 q 104 665 104 745 l 0 665 q 54 867 0 789 q 237 958 116 958 q 429 861 331 958 q 594 765 527 765 q 704 827 670 765 q 729 958 729 874 l 833 958 "},"Ε":{"x_min":0,"x_max":736.21875,"ha":778,"o":"m 736 0 l 0 0 l 0 1013 l 725 1013 l 725 889 l 139 889 l 139 585 l 677 585 l 677 467 l 139 467 l 139 125 l 736 125 l 736 0 "},"³":{"x_min":0,"x_max":450,"ha":547,"o":"m 450 552 q 379 413 450 464 q 220 366 313 366 q 69 414 130 366 q 0 567 0 470 l 85 567 q 126 470 85 504 q 225 437 168 437 q 320 467 280 437 q 360 552 360 498 q 318 632 360 608 q 213 657 276 657 q 195 657 203 657 q 176 657 181 657 l 176 722 q 279 733 249 722 q 334 815 334 752 q 300 881 334 856 q 220 907 267 907 q 133 875 169 907 q 97 781 97 844 l 15 781 q 78 926 15 875 q 220 972 135 972 q 364 930 303 972 q 426 817 426 888 q 344 697 426 733 q 421 642 392 681 q 450 552 450 603 "},"[":{"x_min":0,"x_max":273.609375,"ha":371,"o":"m 273 -281 l 0 -281 l 0 1013 l 273 1013 l 273 920 l 124 920 l 124 -187 l 273 -187 l 273 -281 "},"L":{"x_min":0,"x_max":645.828125,"ha":696,"o":"m 645 0 l 0 0 l 0 1013 l 140 1013 l 140 126 l 645 126 l 645 0 "},"σ":{"x_min":0,"x_max":803.390625,"ha":894,"o":"m 803 628 l 633 628 q 713 368 713 512 q 618 93 713 204 q 357 -25 518 -25 q 94 91 194 -25 q 0 368 0 201 q 94 644 0 533 q 356 761 194 761 q 481 750 398 761 q 608 739 564 739 l 803 739 l 803 628 m 360 85 q 529 180 467 85 q 584 374 584 262 q 527 566 584 490 q 352 651 463 651 q 187 559 247 651 q 135 368 135 478 q 189 175 135 254 q 360 85 251 85 "},"ζ":{"x_min":0,"x_max":573,"ha":642,"o":"m 573 -40 q 553 -162 573 -97 q 510 -278 543 -193 l 400 -278 q 441 -187 428 -219 q 462 -90 462 -132 q 378 -14 462 -14 q 108 45 197 -14 q 0 290 0 117 q 108 631 0 462 q 353 901 194 767 l 55 901 l 55 1012 l 561 1012 l 561 924 q 261 669 382 831 q 128 301 128 489 q 243 117 128 149 q 458 98 350 108 q 573 -40 573 80 "},"θ":{"x_min":0,"x_max":674,"ha":778,"o":"m 674 496 q 601 160 674 304 q 336 -26 508 -26 q 73 153 165 -26 q 0 485 0 296 q 72 840 0 683 q 343 1045 166 1045 q 605 844 516 1045 q 674 496 674 692 m 546 579 q 498 798 546 691 q 336 935 437 935 q 178 798 237 935 q 126 579 137 701 l 546 579 m 546 475 l 126 475 q 170 233 126 348 q 338 80 230 80 q 504 233 447 80 q 546 475 546 346 "},"Ο":{"x_min":0,"x_max":958,"ha":1054,"o":"m 485 1042 q 834 883 703 1042 q 958 511 958 735 q 834 136 958 287 q 481 -26 701 -26 q 126 130 261 -26 q 0 504 0 279 q 127 880 0 729 q 485 1042 263 1042 m 480 98 q 731 225 638 98 q 815 504 815 340 q 733 783 815 670 q 480 913 640 913 q 226 785 321 913 q 142 504 142 671 q 226 224 142 339 q 480 98 319 98 "},"Γ":{"x_min":0,"x_max":705.28125,"ha":749,"o":"m 705 886 l 140 886 l 140 0 l 0 0 l 0 1012 l 705 1012 l 705 886 "}," ":{"x_min":0,"x_max":0,"ha":375},"%":{"x_min":-3,"x_max":1089,"ha":1186,"o":"m 845 0 q 663 76 731 0 q 602 244 602 145 q 661 412 602 344 q 845 489 728 489 q 1027 412 959 489 q 1089 244 1089 343 q 1029 76 1089 144 q 845 0 962 0 m 844 103 q 945 143 909 103 q 981 243 981 184 q 947 340 981 301 q 844 385 909 385 q 744 342 781 385 q 708 243 708 300 q 741 147 708 186 q 844 103 780 103 m 888 986 l 284 -25 l 199 -25 l 803 986 l 888 986 m 241 468 q 58 545 126 468 q -3 715 -3 615 q 56 881 -3 813 q 238 958 124 958 q 421 881 353 958 q 483 712 483 813 q 423 544 483 612 q 241 468 356 468 m 241 855 q 137 811 175 855 q 100 710 100 768 q 136 612 100 653 q 240 572 172 572 q 344 614 306 572 q 382 713 382 656 q 347 810 382 771 q 241 855 308 855 "},"P":{"x_min":0,"x_max":726,"ha":806,"o":"m 424 1013 q 640 931 555 1013 q 726 719 726 850 q 637 506 726 587 q 413 426 548 426 l 140 426 l 140 0 l 0 0 l 0 1013 l 424 1013 m 379 889 l 140 889 l 140 548 l 372 548 q 522 589 459 548 q 593 720 593 637 q 528 845 593 801 q 379 889 463 889 "},"Έ":{"x_min":0,"x_max":1078.21875,"ha":1118,"o":"m 1078 0 l 342 0 l 342 1013 l 1067 1013 l 1067 889 l 481 889 l 481 585 l 1019 585 l 1019 467 l 481 467 l 481 125 l 1078 125 l 1078 0 m 277 1040 l 83 799 l 0 799 l 140 1040 l 277 1040 "},"Ώ":{"x_min":0.125,"x_max":1136.546875,"ha":1235,"o":"m 1136 0 l 722 0 l 722 123 q 911 309 842 194 q 981 558 981 423 q 893 813 981 710 q 651 923 800 923 q 411 821 501 923 q 321 568 321 720 q 390 316 321 433 q 579 123 459 200 l 579 0 l 166 0 l 166 124 l 384 124 q 235 327 289 210 q 182 572 182 444 q 311 912 182 782 q 651 1042 441 1042 q 989 910 858 1042 q 1120 569 1120 778 q 1066 326 1120 443 q 917 124 1013 210 l 1136 124 l 1136 0 m 277 1040 l 83 800 l 0 800 l 140 1041 l 277 1040 "},"_":{"x_min":0,"x_max":705.5625,"ha":803,"o":"m 705 -334 l 0 -334 l 0 -234 l 705 -234 l 705 -334 "},"Ϊ":{"x_min":-110,"x_max":246,"ha":275,"o":"m 246 1046 l 118 1046 l 118 1189 l 246 1189 l 246 1046 m 18 1046 l -110 1046 l -110 1189 l 18 1189 l 18 1046 m 136 0 l 0 0 l 0 1012 l 136 1012 l 136 0 "},"+":{"x_min":23,"x_max":768,"ha":792,"o":"m 768 372 l 444 372 l 444 0 l 347 0 l 347 372 l 23 372 l 23 468 l 347 468 l 347 840 l 444 840 l 444 468 l 768 468 l 768 372 "},"½":{"x_min":0,"x_max":1050,"ha":1149,"o":"m 1050 0 l 625 0 q 712 178 625 108 q 878 277 722 187 q 967 385 967 328 q 932 456 967 429 q 850 484 897 484 q 759 450 798 484 q 721 352 721 416 l 640 352 q 706 502 640 448 q 851 551 766 551 q 987 509 931 551 q 1050 385 1050 462 q 976 251 1050 301 q 829 179 902 215 q 717 68 740 133 l 1050 68 l 1050 0 m 834 985 l 215 -28 l 130 -28 l 750 984 l 834 985 m 224 422 l 142 422 l 142 811 l 0 811 l 0 867 q 104 889 62 867 q 164 973 157 916 l 224 973 l 224 422 "},"Ρ":{"x_min":0,"x_max":720,"ha":783,"o":"m 424 1013 q 637 933 554 1013 q 720 723 720 853 q 633 508 720 591 q 413 426 546 426 l 140 426 l 140 0 l 0 0 l 0 1013 l 424 1013 m 378 889 l 140 889 l 140 548 l 371 548 q 521 589 458 548 q 592 720 592 637 q 527 845 592 801 q 378 889 463 889 "},"'":{"x_min":0,"x_max":139,"ha":236,"o":"m 139 851 q 102 737 139 784 q 0 669 65 690 l 0 734 q 59 787 42 741 q 72 873 72 821 l 0 873 l 0 1013 l 139 1013 l 139 851 "},"ª":{"x_min":0,"x_max":350,"ha":397,"o":"m 350 625 q 307 616 328 616 q 266 631 281 616 q 247 673 251 645 q 190 628 225 644 q 116 613 156 613 q 32 641 64 613 q 0 722 0 669 q 72 826 0 800 q 247 866 159 846 l 247 887 q 220 934 247 916 q 162 953 194 953 q 104 934 129 953 q 76 882 80 915 l 16 882 q 60 976 16 941 q 166 1011 104 1011 q 266 979 224 1011 q 308 891 308 948 l 308 706 q 311 679 308 688 q 331 670 315 670 l 350 672 l 350 625 m 247 757 l 247 811 q 136 790 175 798 q 64 726 64 773 q 83 682 64 697 q 132 667 103 667 q 207 690 174 667 q 247 757 247 718 "},"΅":{"x_min":0,"x_max":450,"ha":553,"o":"m 450 800 l 340 800 l 340 925 l 450 925 l 450 800 m 406 1040 l 212 800 l 129 800 l 269 1040 l 406 1040 m 110 800 l 0 800 l 0 925 l 110 925 l 110 800 "},"T":{"x_min":0,"x_max":777,"ha":835,"o":"m 777 894 l 458 894 l 458 0 l 319 0 l 319 894 l 0 894 l 0 1013 l 777 1013 l 777 894 "},"Φ":{"x_min":0,"x_max":915,"ha":997,"o":"m 527 0 l 389 0 l 389 122 q 110 231 220 122 q 0 509 0 340 q 110 785 0 677 q 389 893 220 893 l 389 1013 l 527 1013 l 527 893 q 804 786 693 893 q 915 509 915 679 q 805 231 915 341 q 527 122 696 122 l 527 0 m 527 226 q 712 310 641 226 q 779 507 779 389 q 712 705 779 627 q 527 787 641 787 l 527 226 m 389 226 l 389 787 q 205 698 275 775 q 136 505 136 620 q 206 308 136 391 q 389 226 276 226 "},"⁋":{"x_min":0,"x_max":0,"ha":694},"j":{"x_min":-77.78125,"x_max":167,"ha":349,"o":"m 167 871 l 42 871 l 42 1013 l 167 1013 l 167 871 m 167 -80 q 121 -231 167 -184 q -26 -278 76 -278 l -77 -278 l -77 -164 l -41 -164 q 26 -143 11 -164 q 42 -65 42 -122 l 42 737 l 167 737 l 167 -80 "},"Σ":{"x_min":0,"x_max":756.953125,"ha":819,"o":"m 756 0 l 0 0 l 0 107 l 395 523 l 22 904 l 22 1013 l 745 1013 l 745 889 l 209 889 l 566 523 l 187 125 l 756 125 l 756 0 "},"1":{"x_min":215.671875,"x_max":574,"ha":792,"o":"m 574 0 l 442 0 l 442 697 l 215 697 l 215 796 q 386 833 330 796 q 475 986 447 875 l 574 986 l 574 0 "},"›":{"x_min":18.0625,"x_max":774,"ha":792,"o":"m 774 376 l 18 40 l 18 149 l 631 421 l 18 692 l 18 799 l 774 465 l 774 376 "},"<":{"x_min":17.984375,"x_max":773.609375,"ha":792,"o":"m 773 40 l 18 376 l 17 465 l 773 799 l 773 692 l 159 420 l 773 149 l 773 40 "},"£":{"x_min":0,"x_max":704.484375,"ha":801,"o":"m 704 41 q 623 -10 664 5 q 543 -26 583 -26 q 359 15 501 -26 q 243 36 288 36 q 158 23 197 36 q 73 -21 119 10 l 6 76 q 125 195 90 150 q 175 331 175 262 q 147 443 175 383 l 0 443 l 0 512 l 108 512 q 43 734 43 623 q 120 929 43 854 q 358 1010 204 1010 q 579 936 487 1010 q 678 729 678 857 l 678 684 l 552 684 q 504 838 552 780 q 362 896 457 896 q 216 852 263 896 q 176 747 176 815 q 199 627 176 697 q 248 512 217 574 l 468 512 l 468 443 l 279 443 q 297 356 297 398 q 230 194 297 279 q 153 107 211 170 q 227 133 190 125 q 293 142 264 142 q 410 119 339 142 q 516 96 482 96 q 579 105 550 96 q 648 142 608 115 l 704 41 "},"t":{"x_min":0,"x_max":367,"ha":458,"o":"m 367 0 q 312 -5 339 -2 q 262 -8 284 -8 q 145 28 183 -8 q 108 143 108 64 l 108 638 l 0 638 l 0 738 l 108 738 l 108 944 l 232 944 l 232 738 l 367 738 l 367 638 l 232 638 l 232 185 q 248 121 232 140 q 307 102 264 102 q 345 104 330 102 q 367 107 360 107 l 367 0 "},"¬":{"x_min":0,"x_max":706,"ha":803,"o":"m 706 411 l 706 158 l 630 158 l 630 335 l 0 335 l 0 411 l 706 411 "},"λ":{"x_min":0,"x_max":750,"ha":803,"o":"m 750 -7 q 679 -15 716 -15 q 538 59 591 -15 q 466 214 512 97 l 336 551 l 126 0 l 0 0 l 270 705 q 223 837 247 770 q 116 899 190 899 q 90 898 100 899 l 90 1004 q 152 1011 125 1011 q 298 938 244 1011 q 373 783 326 901 l 605 192 q 649 115 629 136 q 716 95 669 95 l 736 95 q 750 97 745 97 l 750 -7 "},"W":{"x_min":0,"x_max":1263.890625,"ha":1351,"o":"m 1263 1013 l 995 0 l 859 0 l 627 837 l 405 0 l 265 0 l 0 1013 l 136 1013 l 342 202 l 556 1013 l 701 1013 l 921 207 l 1133 1012 l 1263 1013 "},">":{"x_min":18.0625,"x_max":774,"ha":792,"o":"m 774 376 l 18 40 l 18 149 l 631 421 l 18 692 l 18 799 l 774 465 l 774 376 "},"v":{"x_min":0,"x_max":675.15625,"ha":761,"o":"m 675 738 l 404 0 l 272 0 l 0 738 l 133 737 l 340 147 l 541 737 l 675 738 "},"τ":{"x_min":0.28125,"x_max":644.5,"ha":703,"o":"m 644 628 l 382 628 l 382 179 q 388 120 382 137 q 436 91 401 91 q 474 94 447 91 q 504 97 501 97 l 504 0 q 454 -9 482 -5 q 401 -14 426 -14 q 278 67 308 -14 q 260 233 260 118 l 260 628 l 0 628 l 0 739 l 644 739 l 644 628 "},"ξ":{"x_min":0,"x_max":624.9375,"ha":699,"o":"m 624 -37 q 608 -153 624 -96 q 563 -278 593 -211 l 454 -278 q 491 -183 486 -200 q 511 -83 511 -126 q 484 -23 511 -44 q 370 1 452 1 q 323 0 354 1 q 283 -1 293 -1 q 84 76 169 -1 q 0 266 0 154 q 56 431 0 358 q 197 538 108 498 q 94 613 134 562 q 54 730 54 665 q 77 823 54 780 q 143 901 101 867 l 27 901 l 27 1012 l 576 1012 l 576 901 l 380 901 q 244 863 303 901 q 178 745 178 820 q 312 600 178 636 q 532 582 380 582 l 532 479 q 276 455 361 479 q 118 281 118 410 q 165 173 118 217 q 274 120 208 133 q 494 101 384 110 q 624 -37 624 76 "},"&":{"x_min":-3,"x_max":894.25,"ha":992,"o":"m 894 0 l 725 0 l 624 123 q 471 0 553 40 q 306 -41 390 -41 q 168 -7 231 -41 q 62 92 105 26 q 14 187 31 139 q -3 276 -3 235 q 55 433 -3 358 q 248 581 114 508 q 170 689 196 640 q 137 817 137 751 q 214 985 137 922 q 384 1041 284 1041 q 548 988 483 1041 q 622 824 622 928 q 563 666 622 739 q 431 556 516 608 l 621 326 q 649 407 639 361 q 663 493 653 426 l 781 493 q 703 229 781 352 l 894 0 m 504 818 q 468 908 504 877 q 384 940 433 940 q 293 907 331 940 q 255 818 255 875 q 289 714 255 767 q 363 628 313 678 q 477 729 446 682 q 504 818 504 771 m 556 209 l 314 499 q 179 395 223 449 q 135 283 135 341 q 146 222 135 253 q 183 158 158 192 q 333 80 241 80 q 556 209 448 80 "},"Λ":{"x_min":0,"x_max":862.5,"ha":942,"o":"m 862 0 l 719 0 l 426 847 l 143 0 l 0 0 l 356 1013 l 501 1013 l 862 0 "},"I":{"x_min":41,"x_max":180,"ha":293,"o":"m 180 0 l 41 0 l 41 1013 l 180 1013 l 180 0 "},"G":{"x_min":0,"x_max":921,"ha":1011,"o":"m 921 0 l 832 0 l 801 136 q 655 15 741 58 q 470 -28 568 -28 q 126 133 259 -28 q 0 499 0 284 q 125 881 0 731 q 486 1043 259 1043 q 763 957 647 1043 q 905 709 890 864 l 772 709 q 668 866 747 807 q 486 926 589 926 q 228 795 322 926 q 142 507 142 677 q 228 224 142 342 q 483 94 323 94 q 712 195 625 94 q 796 435 796 291 l 477 435 l 477 549 l 921 549 l 921 0 "},"ΰ":{"x_min":0,"x_max":617,"ha":725,"o":"m 524 800 l 414 800 l 414 925 l 524 925 l 524 800 m 183 800 l 73 800 l 73 925 l 183 925 l 183 800 m 617 352 q 540 93 617 199 q 308 -24 455 -24 q 76 93 161 -24 q 0 352 0 199 l 0 738 l 126 738 l 126 354 q 169 185 126 257 q 312 98 220 98 q 451 185 402 98 q 492 354 492 257 l 492 738 l 617 738 l 617 352 m 489 1040 l 300 819 l 216 819 l 351 1040 l 489 1040 "},"`":{"x_min":0,"x_max":138.890625,"ha":236,"o":"m 138 699 l 0 699 l 0 861 q 36 974 0 929 q 138 1041 72 1020 l 138 977 q 82 931 95 969 q 69 839 69 893 l 138 839 l 138 699 "},"·":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 585 l 0 585 l 0 738 l 142 738 l 142 585 "},"Υ":{"x_min":0.328125,"x_max":819.515625,"ha":889,"o":"m 819 1013 l 482 416 l 482 0 l 342 0 l 342 416 l 0 1013 l 140 1013 l 411 533 l 679 1013 l 819 1013 "},"r":{"x_min":0,"x_max":355.5625,"ha":432,"o":"m 355 621 l 343 621 q 179 569 236 621 q 122 411 122 518 l 122 0 l 0 0 l 0 737 l 117 737 l 117 604 q 204 719 146 686 q 355 753 262 753 l 355 621 "},"x":{"x_min":0,"x_max":675,"ha":764,"o":"m 675 0 l 525 0 l 331 286 l 144 0 l 0 0 l 256 379 l 12 738 l 157 737 l 336 473 l 516 738 l 661 738 l 412 380 l 675 0 "},"μ":{"x_min":0,"x_max":696.609375,"ha":747,"o":"m 696 -4 q 628 -14 657 -14 q 498 97 513 -14 q 422 8 470 41 q 313 -24 374 -24 q 207 3 258 -24 q 120 80 157 31 l 120 -278 l 0 -278 l 0 738 l 124 738 l 124 343 q 165 172 124 246 q 308 82 216 82 q 451 177 402 82 q 492 358 492 254 l 492 738 l 616 738 l 616 214 q 623 136 616 160 q 673 92 636 92 q 696 95 684 92 l 696 -4 "},"h":{"x_min":0,"x_max":615,"ha":724,"o":"m 615 472 l 615 0 l 490 0 l 490 454 q 456 590 490 535 q 338 654 416 654 q 186 588 251 654 q 122 436 122 522 l 122 0 l 0 0 l 0 1013 l 122 1013 l 122 633 q 218 727 149 694 q 362 760 287 760 q 552 676 484 760 q 615 472 615 600 "},".":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 0 l 0 0 l 0 151 l 142 151 l 142 0 "},"φ":{"x_min":-2,"x_max":878,"ha":974,"o":"m 496 -279 l 378 -279 l 378 -17 q 101 88 204 -17 q -2 367 -2 194 q 68 626 -2 510 q 283 758 151 758 l 283 646 q 167 537 209 626 q 133 373 133 462 q 192 177 133 254 q 378 93 259 93 l 378 758 q 445 764 426 763 q 476 765 464 765 q 765 659 653 765 q 878 377 878 553 q 771 96 878 209 q 496 -17 665 -17 l 496 -279 m 496 93 l 514 93 q 687 183 623 93 q 746 380 746 265 q 691 569 746 491 q 522 658 629 658 l 496 656 l 496 93 "},";":{"x_min":0,"x_max":142,"ha":239,"o":"m 142 585 l 0 585 l 0 738 l 142 738 l 142 585 m 142 -12 q 105 -132 142 -82 q 0 -206 68 -182 l 0 -138 q 58 -82 43 -123 q 68 0 68 -56 l 0 0 l 0 151 l 142 151 l 142 -12 "},"f":{"x_min":0,"x_max":378,"ha":472,"o":"m 378 638 l 246 638 l 246 0 l 121 0 l 121 638 l 0 638 l 0 738 l 121 738 q 137 935 121 887 q 290 1028 171 1028 q 320 1027 305 1028 q 378 1021 334 1026 l 378 908 q 323 918 346 918 q 257 870 273 918 q 246 780 246 840 l 246 738 l 378 738 l 378 638 "},"“":{"x_min":1,"x_max":348.21875,"ha":454,"o":"m 140 670 l 1 670 l 1 830 q 37 943 1 897 q 140 1011 74 990 l 140 947 q 82 900 97 940 q 68 810 68 861 l 140 810 l 140 670 m 348 670 l 209 670 l 209 830 q 245 943 209 897 q 348 1011 282 990 l 348 947 q 290 900 305 940 q 276 810 276 861 l 348 810 l 348 670 "},"A":{"x_min":0.03125,"x_max":906.953125,"ha":1008,"o":"m 906 0 l 756 0 l 648 303 l 251 303 l 142 0 l 0 0 l 376 1013 l 529 1013 l 906 0 m 610 421 l 452 867 l 293 421 l 610 421 "},"6":{"x_min":53,"x_max":739,"ha":792,"o":"m 739 312 q 633 62 739 162 q 400 -31 534 -31 q 162 78 257 -31 q 53 439 53 206 q 178 859 53 712 q 441 986 284 986 q 643 912 559 986 q 732 713 732 833 l 601 713 q 544 830 594 786 q 426 875 494 875 q 268 793 331 875 q 193 517 193 697 q 301 597 240 570 q 427 624 362 624 q 643 540 552 624 q 739 312 739 451 m 603 298 q 540 461 603 400 q 404 516 484 516 q 268 461 323 516 q 207 300 207 401 q 269 137 207 198 q 405 83 325 83 q 541 137 486 83 q 603 298 603 197 "},"‘":{"x_min":1,"x_max":139.890625,"ha":236,"o":"m 139 670 l 1 670 l 1 830 q 37 943 1 897 q 139 1011 74 990 l 139 947 q 82 900 97 940 q 68 810 68 861 l 139 810 l 139 670 "},"ϊ":{"x_min":-70,"x_max":283,"ha":361,"o":"m 283 800 l 173 800 l 173 925 l 283 925 l 283 800 m 40 800 l -70 800 l -70 925 l 40 925 l 40 800 m 283 3 q 232 -10 257 -5 q 181 -15 206 -15 q 84 26 118 -15 q 41 200 41 79 l 41 737 l 166 737 l 167 215 q 171 141 167 157 q 225 101 182 101 q 247 103 238 101 q 283 112 256 104 l 283 3 "},"π":{"x_min":-0.21875,"x_max":773.21875,"ha":857,"o":"m 773 -7 l 707 -11 q 575 40 607 -11 q 552 174 552 77 l 552 226 l 552 626 l 222 626 l 222 0 l 97 0 l 97 626 l 0 626 l 0 737 l 773 737 l 773 626 l 676 626 l 676 171 q 695 103 676 117 q 773 90 714 90 l 773 -7 "},"ά":{"x_min":0,"x_max":765.5625,"ha":809,"o":"m 765 -4 q 698 -14 726 -14 q 564 97 586 -14 q 466 7 525 40 q 337 -26 407 -26 q 88 98 186 -26 q 0 369 0 212 q 88 637 0 525 q 337 760 184 760 q 465 727 407 760 q 563 637 524 695 l 563 738 l 685 738 l 685 222 q 693 141 685 168 q 748 94 708 94 q 765 95 760 94 l 765 -4 m 584 371 q 531 562 584 485 q 360 653 470 653 q 192 566 254 653 q 135 379 135 489 q 186 181 135 261 q 358 84 247 84 q 528 176 465 84 q 584 371 584 260 m 604 1040 l 415 819 l 332 819 l 466 1040 l 604 1040 "},"O":{"x_min":0,"x_max":958,"ha":1057,"o":"m 485 1041 q 834 882 702 1041 q 958 512 958 734 q 834 136 958 287 q 481 -26 702 -26 q 126 130 261 -26 q 0 504 0 279 q 127 880 0 728 q 485 1041 263 1041 m 480 98 q 731 225 638 98 q 815 504 815 340 q 733 783 815 669 q 480 912 640 912 q 226 784 321 912 q 142 504 142 670 q 226 224 142 339 q 480 98 319 98 "},"n":{"x_min":0,"x_max":615,"ha":724,"o":"m 615 463 l 615 0 l 490 0 l 490 454 q 453 592 490 537 q 331 656 410 656 q 178 585 240 656 q 117 421 117 514 l 117 0 l 0 0 l 0 738 l 117 738 l 117 630 q 218 728 150 693 q 359 764 286 764 q 552 675 484 764 q 615 463 615 593 "},"3":{"x_min":54,"x_max":737,"ha":792,"o":"m 737 284 q 635 55 737 141 q 399 -25 541 -25 q 156 52 248 -25 q 54 308 54 140 l 185 308 q 245 147 185 202 q 395 96 302 96 q 539 140 484 96 q 602 280 602 190 q 510 429 602 390 q 324 454 451 454 l 324 565 q 487 584 441 565 q 565 719 565 617 q 515 835 565 791 q 395 879 466 879 q 255 824 307 879 q 203 661 203 769 l 78 661 q 166 909 78 822 q 387 992 250 992 q 603 921 513 992 q 701 723 701 844 q 669 607 701 656 q 578 524 637 558 q 696 434 655 499 q 737 284 737 369 "},"9":{"x_min":53,"x_max":739,"ha":792,"o":"m 739 524 q 619 94 739 241 q 362 -32 516 -32 q 150 47 242 -32 q 59 244 59 126 l 191 244 q 246 129 191 176 q 373 82 301 82 q 526 161 466 82 q 597 440 597 255 q 363 334 501 334 q 130 432 216 334 q 53 650 53 521 q 134 880 53 786 q 383 986 226 986 q 659 841 566 986 q 739 524 739 719 m 388 449 q 535 514 480 449 q 585 658 585 573 q 535 805 585 744 q 388 873 480 873 q 242 809 294 873 q 191 658 191 745 q 239 514 191 572 q 388 449 292 449 "},"l":{"x_min":41,"x_max":166,"ha":279,"o":"m 166 0 l 41 0 l 41 1013 l 166 1013 l 166 0 "},"¤":{"x_min":40.09375,"x_max":728.796875,"ha":825,"o":"m 728 304 l 649 224 l 512 363 q 383 331 458 331 q 256 363 310 331 l 119 224 l 40 304 l 177 441 q 150 553 150 493 q 184 673 150 621 l 40 818 l 119 898 l 267 749 q 321 766 291 759 q 384 773 351 773 q 447 766 417 773 q 501 749 477 759 l 649 898 l 728 818 l 585 675 q 612 618 604 648 q 621 553 621 587 q 591 441 621 491 l 728 304 m 384 682 q 280 643 318 682 q 243 551 243 604 q 279 461 243 499 q 383 423 316 423 q 487 461 449 423 q 525 553 525 500 q 490 641 525 605 q 384 682 451 682 "},"κ":{"x_min":0,"x_max":632.328125,"ha":679,"o":"m 632 0 l 482 0 l 225 384 l 124 288 l 124 0 l 0 0 l 0 738 l 124 738 l 124 446 l 433 738 l 596 738 l 312 466 l 632 0 "},"4":{"x_min":48,"x_max":742.453125,"ha":792,"o":"m 742 243 l 602 243 l 602 0 l 476 0 l 476 243 l 48 243 l 48 368 l 476 958 l 602 958 l 602 354 l 742 354 l 742 243 m 476 354 l 476 792 l 162 354 l 476 354 "},"p":{"x_min":0,"x_max":685,"ha":786,"o":"m 685 364 q 598 96 685 205 q 350 -23 504 -23 q 121 89 205 -23 l 121 -278 l 0 -278 l 0 738 l 121 738 l 121 633 q 220 726 159 691 q 351 761 280 761 q 598 636 504 761 q 685 364 685 522 m 557 371 q 501 560 557 481 q 330 651 437 651 q 162 559 223 651 q 108 366 108 479 q 162 177 108 254 q 333 87 224 87 q 502 178 441 87 q 557 371 557 258 "},"‡":{"x_min":0,"x_max":777,"ha":835,"o":"m 458 238 l 458 0 l 319 0 l 319 238 l 0 238 l 0 360 l 319 360 l 319 681 l 0 683 l 0 804 l 319 804 l 319 1015 l 458 1013 l 458 804 l 777 804 l 777 683 l 458 683 l 458 360 l 777 360 l 777 238 l 458 238 "},"ψ":{"x_min":0,"x_max":808,"ha":907,"o":"m 465 -278 l 341 -278 l 341 -15 q 87 102 180 -15 q 0 378 0 210 l 0 739 l 133 739 l 133 379 q 182 195 133 275 q 341 98 242 98 l 341 922 l 465 922 l 465 98 q 623 195 563 98 q 675 382 675 278 l 675 742 l 808 742 l 808 381 q 720 104 808 213 q 466 -13 627 -13 l 465 -278 "},"η":{"x_min":0.78125,"x_max":697,"ha":810,"o":"m 697 -278 l 572 -278 l 572 454 q 540 587 572 536 q 425 650 501 650 q 271 579 337 650 q 206 420 206 509 l 206 0 l 81 0 l 81 489 q 73 588 81 562 q 0 644 56 644 l 0 741 q 68 755 38 755 q 158 720 124 755 q 200 630 193 686 q 297 726 234 692 q 434 761 359 761 q 620 692 544 761 q 697 516 697 624 l 697 -278 "}},"cssFontWeight":"normal","ascender":1189,"underlinePosition":-100,"cssFontStyle":"normal","boundingBox":{"yMin":-334,"xMin":-111,"yMax":1189,"xMax":1672},"resolution":1000,"original_font_information":{"postscript_name":"Helvetiker-Regular","version_string":"Version 1.00 2004 initial release","vendor_url":"http://www.magenta.gr/","full_font_name":"Helvetiker","font_family_name":"Helvetiker","copyright":"Copyright (c) Μagenta ltd, 2004","description":"","trademark":"","designer":"","designer_url":"","unique_font_identifier":"Μagenta ltd:Helvetiker:22-10-104","license_url":"http://www.ellak.gr/fonts/MgOpen/license.html","license_description":"Copyright (c) 2004 by MAGENTA Ltd. All Rights Reserved.\r\n\r\nPermission is hereby granted, free of charge, to any person obtaining a copy of the fonts accompanying this license (\"Fonts\") and associated documentation files (the \"Font Software\"), to reproduce and distribute the Font Software, including without limitation the rights to use, copy, merge, publish, distribute, and/or sell copies of the Font Software, and to permit persons to whom the Font Software is furnished to do so, subject to the following conditions: \r\n\r\nThe above copyright and this permission notice shall be included in all copies of one or more of the Font Software typefaces.\r\n\r\nThe Font Software may be modified, altered, or added to, and in particular the designs of glyphs or characters in the Fonts may be modified and additional glyphs or characters may be added to the Fonts, only if the fonts are renamed to names not containing the word \"MgOpen\", or if the modifications are accepted for inclusion in the Font Software itself by the each appointed Administrator.\r\n\r\nThis License becomes null and void to the extent applicable to Fonts or Font Software that has been modified and is distributed under the \"MgOpen\" name.\r\n\r\nThe Font Software may be sold as part of a larger software package but no copy of one or more of the Font Software typefaces may be sold by itself. \r\n\r\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL MAGENTA OR PERSONS OR BODIES IN CHARGE OF ADMINISTRATION AND MAINTENANCE OF THE FONT SOFTWARE BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.","manufacturer_name":"Μagenta ltd","font_sub_family_name":"Regular"},"descender":-334,"familyName":"Helvetiker","lineHeight":1522,"underlineThickness":50});
+},{}],51:[function(require,module,exports){
+var utils = require('../lib/utils');
+
+module.exports = utils.wrapAEventElement('a-click', 'click');
+
+},{"../lib/utils":63}],52:[function(require,module,exports){
+/* global HTMLElement */
+
+var aframeCore = require('aframe-core');
+var utils = require('../lib/utils');
+
+var registerElement = aframeCore.registerElement.registerElement;
+var stateEls = {};
+var listeners = {};
+var targetData = {};
+
+var attributeBlacklist = {
+  // TODO: Consider ignoring unique attributes too
+  // (e.g., `class`, `id`, `name`, etc.).
+  target: true
+};
+
+// State management
+
+function addState (el, state) {
+  el.addState(state);
+  recordState(el, state);
+}
+
+function recordState (el, state) {
+  if (state in stateEls) {
+    stateEls[state].push(el);
+  } else {
+    stateEls[state] = [el];
+  }
+}
+
+function unrecordState (el, state) {
+  if (!(state in stateEls)) { return; }
+  var elIdx = stateEls[state].indexOf(el);
+  if (elIdx === -1) { return; }
+  stateEls[state].splice(elIdx, 1);
+}
+
+function removeState (el, state) {
+  el.removeState(state);
+  unrecordState(el, state);
+}
+
+function hasState (el, state) {
+  if (!(state in stateEls)) { return false; }
+  var elIdx = stateEls[state].indexOf(el);
+  return elIdx !== -1;
+}
+
+// Unique event listeners
+
+function recordListener (el, type) {
+  if (type in listeners) {
+    listeners[type].push(el);
+  } else {
+    listeners[type] = [el];
+  }
+}
+
+function hasListener (el, type) {
+  if (!(type in listeners)) { return false; }
+  var elIdx = listeners[type].indexOf(el);
+  return elIdx !== -1;
+}
+
+function addDelegatedListener (el, type, listener, useCapture) {
+  if (hasListener(el, type)) { return; }  // Add the event listener only once.
+  recordListener(el, type);
+  el.addEventListener(type, listener, useCapture);
+}
+
+// Target data
+
+function recordTargetData (type, sourceEl, targetSel, attributes) {
+  var key = type;
+  var obj = {sourceEl: sourceEl, targetSel: targetSel, attributes: attributes};
+  if (key in targetData) {
+    targetData[key].push(obj);
+  } else {
+    targetData[key] = [obj];
+  }
+}
+
+function getTargetData (type) {
+  var key = type;
+  return targetData[key];
+}
+
+function targetListener (e) {
+  // Not to be confused with the `target` we are modifying below.
+  var eventFiredOnEl = getRealNode(e.target);
+  var eventType = e.type;
+
+  var allTargetData = getTargetData(eventType, eventFiredOnEl);
+  if (!allTargetData) { return; }
+
+  allTargetData.forEach(updateTargetEl);
+
+  function updateTargetEl (targetData) {
+    var sourceEl = targetData.sourceEl;
+    if (sourceEl !== eventFiredOnEl) { return; }
+
+    var targetAttributes = targetData.attributes;
+    // TODO: Support updating multiple elements later by using `$$` and iterating.
+    var targetSel = targetData.targetSel;
+    var targetEl = typeof targetSel === 'string' ? utils.$(targetSel) : targetSel;
+
+    if (!targetEl) { return; }
+
+    updateAttrs(targetEl, targetAttributes);
+  }
+}
+
+function updateAttrs (targetEl, targetAttributes) {
+  utils.$$(targetAttributes).forEach(function (attr) {
+    if (attr.name in attributeBlacklist) { return; }
+
+    if (attr.name === 'state') {
+      var states = utils.splitString(attr.value);
+      states.forEach(function (state) {
+        // Set the state on this element.
+        addState(targetEl, state);
+        // Remove the state on the other element(s).
+        stateEls[state].forEach(function (el) {
+          if (el === targetEl) { return; }  // Don't remove my state!
+          removeState(el, state);
+        });
+      });
+    } else {
+      targetEl.setAttribute(attr.name, attr.value);
+    }
+  });
+}
+
+// Synthesize events for cursor `mouseenter` and `mouseleave`
+
+window.addEventListener('stateadded', function (e) {
+  var detail = e.detail;
+  var state = detail.state;
+  var el = e.target;
+
+  recordState(el, state);
+
+  if (state === 'hovering') {
+    el.emit('mouseenter');
+  }
+  if (state === 'hovered') {
+    if (hasState(el, 'selected')) {
+      removeState(el, 'hovered');
+    }
+  }
+});
+
+window.addEventListener('stateremoved', function (e) {
+  var detail = e.detail;
+  var state = detail.state;
+  var el = e.target;
+
+  unrecordState(el, state);
+
+  if (state === 'hovering') {
+    el.emit('mouseleave');
+  }
+});
+
+/**
+ * Returns the true node (useful for a wrapped object in a template instance).
+ */
+function getRealNode (el) {
+  if (el.tagName.toLowerCase() === 'a-root') {
+    return el.parentNode;
+  }
+  if (!el.previousElementSibling && !el.nextElementSibling && el.closest('a-root')) {
+    return el.closest('a-root').parentNode;
+  }
+  return el;
+}
+
+var AEvent = registerElement(
+  'a-event',
+  {
+    prototype: Object.create(
+      HTMLElement.prototype,
+      {
+        attachedCallback: {
+          value: function () {
+            var self = this;
+            var el = self.parentNode;
+            if (el.isNode) {
+              attach();
+            } else {
+              el.addEventListener('nodeready', attach);
+            }
+
+            function attach () {
+              self.isAEvent = true;
+              self.type = self.type || self.getAttribute('type');
+              self.target = self.target || self.getAttribute('target');
+              self.sceneEl = utils.$('a-scene');
+              self.attachEventListener();
+            }
+          },
+          writable: window.debug
+        },
+
+        detachedCallback: {
+          value: function () {
+            // TODO: Remove all event listeners.
+          },
+          writable: window.debug
+        },
+
+        attributeChangedCallback: {
+          value: function (attr, oldVal, newVal) {
+            if (oldVal === newVal) { return; }
+            if (attr === 'type') {
+              this.type = newVal;
+            } else if (attr === 'target') {
+              this.target = newVal;
+            }
+          },
+          writable: window.debug
+        },
+
+        attachEventListener: {
+          value: function () {
+            var self = this;
+            var sourceEl;
+            var targetEl;
+            var listener;
+
+            // TODO: Land `on` PR in `aframe-core`: https://github.com/aframevr/aframe-core/pull/330
+
+            this.sceneEl = this.sceneEl || utils.$('a-scene');
+
+            if (self.type === 'load') {
+              sourceEl = getRealNode(self.parentNode);
+              targetEl = self.target ? utils.$(self.target) : sourceEl;
+              listener = function (e) {
+                if (e.target !== sourceEl) { return; }
+                updateAttrs(targetEl, self.attributes);
+              };
+              if (sourceEl && sourceEl.hasLoaded) {
+                listener(sourceEl);
+                return;
+              }
+              this.sceneEl.addEventListener('load', listener);
+              return;
+            }
+
+            listener = targetListener;
+
+            // We must delegate events because the target nodes may not exist yet.
+            addDelegatedListener(this.sceneEl, self.type, listener);
+            sourceEl = getRealNode(self.parentNode);
+            targetEl = self.target || sourceEl;
+            recordTargetData(self.type, sourceEl, targetEl, self.attributes);
+          },
+          writable: window.debug
+        }
+      }
+    )
+  }
+);
+
+module.exports = AEvent;
+
+},{"../lib/utils":63,"aframe-core":39}],53:[function(require,module,exports){
+var utils = require('../lib/utils');
+
+/**
+ * We `hover` by applying attributes upon `mouseenter` and then
+ * rolling back the changes upon `mouseleave` of the element.
+ */
+module.exports = utils.wrapAEventElement('a-hover', 'mouseenter');
+
+},{"../lib/utils":63}],54:[function(require,module,exports){
+var utils = require('../lib/utils');
+
+module.exports = utils.wrapAEventElement('a-load', 'load');
+
+},{"../lib/utils":63}],55:[function(require,module,exports){
+var utils = require('../lib/utils');
+
+module.exports = utils.wrapAEventElement('a-mousedown', 'mousedown');
+
+},{"../lib/utils":63}],56:[function(require,module,exports){
+var utils = require('../lib/utils');
+
+module.exports = utils.wrapAEventElement('a-mouseenter', 'mouseenter');
+
+},{"../lib/utils":63}],57:[function(require,module,exports){
+var utils = require('../lib/utils');
+
+module.exports = utils.wrapAEventElement('a-mouseleave', 'mouseleave');
+
+},{"../lib/utils":63}],58:[function(require,module,exports){
+var utils = require('../lib/utils');
+
+module.exports = utils.wrapAEventElement('a-mouseup', 'mouseup');
+
+},{"../lib/utils":63}],59:[function(require,module,exports){
+module.exports = {
+  'a-click': require('./a-click'),
+  'a-event': require('./a-event'),
+  'a-hover': require('./a-hover'),
+  'a-load': require('./a-load'),
+  'a-mousedown': require('./a-mousedown'),
+  'a-mouseenter': require('./a-mouseenter'),
+  'a-mouseleave': require('./a-mouseleave'),
+  'a-mouseup': require('./a-mouseup')
+};
+
+},{"./a-click":51,"./a-event":52,"./a-hover":53,"./a-load":54,"./a-mousedown":55,"./a-mouseenter":56,"./a-mouseleave":57,"./a-mouseup":58}],60:[function(require,module,exports){
+/* global HTMLTemplateElement, HTMLImports, MutationObserver */
+
+window.addEventListener('HTMLImportsLoaded', injectFromPolyfilledImports);
+
+// NOTE: HTML Imports polyfill must come before we include `aframe-core`.
+if (!('import' in document.createElement('link'))) {
+  require('../lib/vendor/HTMLImports');
+}
+
+var aframeCore = require('aframe-core');
+var registerTemplate = require('./lib/register-template');
+var utils = require('./lib/utils');
+
+var registerElement = aframeCore.registerElement.registerElement;
+
+function injectFromPolyfilledImports () {
+  if (!HTMLImports || HTMLImports.useNative) { return; }
+
+  Object.keys(HTMLImports.importer.documents).forEach(function (key) {
+    var doc = HTMLImports.importer.documents[key];
+    insertTemplateElements(doc);
+  });
+}
+
+function insertTemplateElements (doc) {
+  var sceneEl = utils.$('a-scene');
+  var assetsEl = utils.$('a-assets');
+  if (!assetsEl) {
+    assetsEl = document.createElement('a-assets');
+    sceneEl.parentNode.insertBefore(assetsEl, sceneEl);
+  }
+
+  utils.$$('a-mixin', doc).forEach(function (mixinEl) {
+    var mixinCloneEl = document.importNode(mixinEl, true);
+    assetsEl.appendChild(mixinCloneEl);
+  });
+
+  utils.$$('template[is="a-template"]', doc).forEach(function (templateEl) {
+    var templateCloneEl = document.importNode(templateEl, true);
+    document.body.appendChild(templateCloneEl);
+  });
+}
+
+module.exports = registerElement(
+  'a-template',
+  {
+    extends: 'template',  // This lets us do `<template is="a-template">`.
+    prototype: Object.create(
+      HTMLTemplateElement.prototype,
+      {
+        createdCallback: {
+          value: function () {
+            var self = this;
+            self.placeholders = [];
+            // For Chrome: https://github.com/aframevr/aframe-core/issues/321
+            window.addEventListener('load', function () {
+              appendElement();
+              function appendElement () {
+                var isInDocument = self.ownerDocument === document;
+                // TODO: Handle `<a-mixin>` from imported templates for Chrome.
+                if (!isInDocument) { document.body.appendChild(self); }
+              }
+            });
+          },
+          writable: window.debug
+        },
+
+        attachedCallback: {
+          value: function () {
+            this.load();
+            this.inject();
+          },
+          writable: window.debug
+        },
+
+        detachedCallback: {
+          value: function () {
+            // XXX: Hack for VS to hide templates from source.
+            // var self = this;
+            // self.removeTemplateListener();
+            // self.placeholders.forEach(function (el) {
+            //   self.sceneEl.remove(el);
+            // });
+          },
+          writable: window.debug
+        },
+
+        load: {
+          value: function () {
+            // To prevent emitting the loaded event more than once.
+            if (this.hasLoaded) { return; }
+            utils.fireEvent(this, 'loaded');
+            this.hasLoaded = true;
+          },
+          writable: window.debug
+        },
+
+        register: {
+          value: function (tagName) {
+            if (this.registered) { return; }
+            this.registered = true;
+            return registerTemplate(tagName);
+          },
+          writable: window.debug
+        },
+
+        removeTemplateListener: {
+          value: function () {
+            if (!this.mixinObserver) { return; }
+            this.mixinObserver.disconnect();
+            this.mixinObserver = null;
+          },
+          writable: window.debug
+        },
+
+        attachTemplateListener: {
+          value: function (tagName) {
+            var self = this;
+            if (self.mixinObserver) { self.mixinObserver.disconnect(); }
+            self.mixinObserver = new MutationObserver(function (mutations) {
+              self.placeholders.forEach(function (el) {
+                el.rerender(true);
+              });
+            });
+            self.mixinObserver.observe(self, {
+              attributes: true,
+              characterData: true,
+              childList: true,
+              subtree: true
+            });
+          },
+          writable: window.debug
+        },
+
+        inject: {
+          value: function () {
+            var self = this;
+
+            if (self.injected) { return; }
+            self.injected = true;
+
+            var tagName = self.getAttribute('element');
+            if (!tagName) { return; }
+
+            self.attachTemplateListener(tagName);
+            self.register(tagName);
+          },
+          writable: window.debug
+        }
+      }
+    )
+  }
+);
+
+},{"../lib/vendor/HTMLImports":79,"./lib/register-template":62,"./lib/utils":63,"aframe-core":39}],61:[function(require,module,exports){
+var modules = {
+  'a-event': require('./a-event'),
+  'a-template': require('./a-template')
+};
+
+// This injects the template definitions into the page.
+require('./templates/index.html');
+
+module.exports = modules;
+
+},{"./a-event":59,"./a-template":60,"./templates/index.html":77}],62:[function(require,module,exports){
+var aframeCore = require('aframe-core');
+var utils = require('./utils');
+
+var registerElement = aframeCore.registerElement.registerElement;
+var AEntity = aframeCore.AEntity;
+var AComponents = aframeCore.AComponents;
+
+var ATTRIBUTE_BLACKLIST = utils.extend({
+  id: true,
+  name: true,
+  class: true,
+  target: true
+});
+var COMPONENT_BLACKLIST = utils.extend({}, AComponents);
+
+registerElement('a-root', {prototype: Object.create(AEntity.prototype)});
+
+module.exports = function (tagName) {
+  var tagNameLower = tagName.toLowerCase();
+
+  return registerElement(
+    tagNameLower,
+    {
+      prototype: Object.create(
+        AEntity.prototype, {
+          attachedCallback: {
+            value: function () {
+              // We emit an event so `<a-entity>` knows when we've been
+              // registered and adds our children as `object3D`s.
+              this.emit('nodeready');
+              this.rerender(false, true);
+            }
+          },
+
+          attributeChangedCallback: {
+            value: function (attr, oldVal, newVal) {
+              if (oldVal === newVal) { return; }
+              this.rerender();
+            },
+            writable: window.debug
+          },
+
+          attributeBlacklist: {
+            value: ATTRIBUTE_BLACKLIST,
+            writable: window.debug
+          },
+
+          componentBlacklist: {
+            value: COMPONENT_BLACKLIST,
+            writable: window.debug
+          },
+
+          detachedCallback: {
+            value: function () {
+              if (!this.sceneEl) {
+                this.sceneEl = utils.$('a-scene');
+              }
+              this.sceneEl.remove(this);
+            },
+            writable: window.debug
+          },
+
+          rerender: {
+            value: function (force, firstTime) {
+              var self = this;
+              if (!force && this.lastOuterHTML === this.outerHTML) { return; }
+              var template = utils.$('template[is="a-template"][element="' + tagName + '"]');
+              if (!template) { return; }
+
+              // Use the defaults defined on the original `<template is="a-template">`.
+              var templateAttrs = utils.mergeAttrs(template, this);
+              utils.forEach(template.attributes, function (attr) {
+                if (attr.name in self.componentBlacklist) {
+                  if (firstTime) {
+                    utils.warn('Cannot use attribute name "%s" for template ' +
+                      'definition of <%s> because it is a core component',
+                      attr.name, tagNameLower);
+                  }
+                  delete templateAttrs[attr.name];
+                }
+              });
+              Object.keys(templateAttrs).filter(function (key) {
+                if (key in this.attributeBlacklist) {
+                  // Move these unique identifier attributes over
+                  // (i.e., `id`, `name`, `class`, `target`).
+                  delete templateAttrs[key];
+                }
+                var value = templateAttrs[key];
+                var component = this.components[key];
+                if (component && typeof value === 'object') {
+                  templateAttrs[key] = component.stringify(value);
+                }
+              }, this);
+
+              this.root = utils.$$(this.children).filter(function (el) {
+                return el.tagName.toLowerCase() === 'a-root';
+              })[0];
+
+              if (!this.root) {
+                this.root = document.createElement('a-root');
+                this.appendChild(this.root);
+              }
+
+              var newHTML = utils.format(template.innerHTML, templateAttrs);
+              if (newHTML !== this.root.innerHTML) {
+                this.root.innerHTML = newHTML;
+              }
+
+              this.lastOuterHTML = this.outerHTML;
+            },
+            writable: window.debug
+          }
+        }
+      )
+    });
+};
+
+},{"./utils":63,"aframe-core":39}],63:[function(require,module,exports){
+var aframeCore = require('aframe-core');
+var AEvent = require('../a-event/a-event');
+
+var aframeCoreUtils = aframeCore.utils;
+var registerElement = aframeCore.registerElement.registerElement;
+
+/**
+ * Wraps `querySelector` à la jQuery's `$`.
+ *
+ * @param {String|Element} sel CSS selector to match an element.
+ * @param {Element=} parent Parent from which to query.
+ * @returns {Element} Element matched by selector.
+ */
+module.exports.$ = function (sel, parent) {
+  var el = sel;
+  if (sel && typeof sel === 'string') {
+    el = (parent || document).querySelector(sel);
+  }
+  return el;
+};
+
+/**
+ * Wraps `querySelectorAll` à la jQuery's `$`.
+ *
+ * @param {String|Element} sel CSS selector to match elements.
+ * @param {Element=} parent Parent from which to query.
+ * @returns {Array} Array of elements matched by selector.
+ */
+module.exports.$$ = function (sel, parent) {
+  if (Array.isArray(sel)) { return sel; }
+  var els = sel;
+  if (sel && typeof sel === 'string') {
+    els = (parent || document).querySelectorAll(sel);
+  }
+  return toArray(els);
+};
+
+/**
+ * Turns an array-like object into an array.
+ *
+ * @param {String|Element} obj CSS selector to match elements.
+ * @param {Array|NamedNodeMap|NodeList|HTMLCollection} arr An array-like object.
+ * @returns {Array} Array of elements matched by selector.
+ */
+var toArray = module.exports.toArray = function (obj) {
+  if (Array.isArray(obj)) { return obj; }
+  if (typeof obj === 'object' && typeof obj.length === 'number') {
+    return Array.prototype.slice.call(obj);
+  }
+  return [obj];
+};
+
+/**
+ * Wraps `Array.prototype.forEach`.
+ *
+ * @param {Object} arr An array-like object.
+ * @returns {Array} A real array.
+ */
+var forEach = module.exports.forEach = function (arr, fn) {
+  return Array.prototype.forEach.call(arr, fn);
+};
+
+/**
+ * Merges attributes à la `Object.assign`.
+ *
+ * @param {...Object} els
+ *   Array-like object (NodeMap, array, etc.) of
+ *   parent elements from which to query.
+ * @returns {Array} Array of merged attributes.
+ */
+module.exports.mergeAttrs = function () {
+  var mergedAttrs = {};
+  forEach(arguments, function (el) {
+    forEach(el.attributes, function (attr) {
+      // NOTE: We use `getComputedAttribute` instead of `attr.value` so our
+      // wrapper for coordinate objects, etc. gets used.
+      if (el.getComputedAttribute) {
+        mergedAttrs[attr.name] = el.getComputedAttribute(attr.name);
+      } else {
+        mergedAttrs[attr.name] = el.getAttribute(attr.name);
+      }
+    });
+  });
+  return mergedAttrs;
+};
+
+/**
+ * Does ES6-style (or mustache-style) string formatting.
+ *
+ * > format('${0}', ['zzz'])
+ * "zzz"
+ *
+ * > format('${0}{1}', 1, 2)
+ * "12"
+ *
+ * > format('${x}', {x: 1})
+ * "1"
+ *
+ * > format('my favourite color is ${color=blue}', {x: 1})
+ * "my favourite color is blue"
+ *
+ * @returns {String} Formatted string with interpolated variables.
+ */
+module.exports.format = (function () {
+  var regexes = [
+    /\$?\{\s*([^}= ]+)(\s*=\s*(.+))?\s*\}/g,
+    /\$?%7B\s*([^}= ]+)(\s*=\s*(.+))?\s*%7D/g
+  ];
+  return function (s, args) {
+    if (!s) { throw new Error('Format string is empty!'); }
+    if (!args) { return; }
+    if (!(args instanceof Array || args instanceof Object)) {
+      args = Array.prototype.slice.call(arguments, 1);
+    }
+    Object.keys(args).forEach(function (key) {
+      args[String(key).toLowerCase()] = args[key];
+    });
+    regexes.forEach(function (re) {
+      s = s.replace(re, function (_, name, rhs, defaultVal) {
+        var val = args[name.toLowerCase()];
+
+        if (typeof val === 'undefined') {
+          return (defaultVal || '').trim().replace(/^["']|["']$/g, '');
+        }
+
+        return (val || '').trim().replace(/^["']|["']$/g, '');
+      });
+    });
+    return s;
+  };
+})();
+
+/**
+ * Wraps an element as a new one with a different name.
+ *
+ * @param {String} newTagName - Name of the new custom element.
+ * @param {Element} srcElement - Original custom element to wrap.
+ * @param {Object=} [data={}] - Data for the new prototype.
+ * @returns {Array} Wrapped custom element.
+ */
+var wrapElement = module.exports.wrapElement = function (newTagName, srcElement, data) {
+  data = data || {};
+  return registerElement(newTagName, {
+    prototype: Object.create(srcElement.prototype, data)
+  });
+};
+
+/**
+ * Wraps `<a-event>` for a particular event `type`.
+ *
+ * @param {String} newTagName - Name of the new custom element.
+ * @param {Element} eventName - Name of event type.
+ * @param {Object=} [data={}] - Data for the new prototype.
+ * @returns {Array} Wrapped custom element.
+ */
+module.exports.wrapAEventElement = function (newTagName, eventName, data) {
+  data = data || {};
+  data.type = {
+    value: eventName,
+    writable: window.debug
+  };
+  return wrapElement(newTagName, AEvent, data);
+};
+
+// Useful utils from aframe-core.
+module.exports.error = aframeCoreUtils.error;
+module.exports.extend = aframeCoreUtils.extend;
+module.exports.fireEvent = aframeCoreUtils.fireEvent;
+module.exports.log = aframeCoreUtils.log;
+module.exports.splitString = aframeCoreUtils.splitString;
+module.exports.warn = aframeCoreUtils.warn;
+
+},{"../a-event/a-event":52,"aframe-core":39}],64:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-camera\" fov=\"80\" near=\"0.5\" far=\"10000\" look-controls-enabled=\"true\" wasd-controls-enabled=\"true\" cursor-visible=\"true\" cursor-offset=\"1\" cursor-color=\"#FFF\" cursor-maxdistance=\"1000\" cursor-scale=\"1\" cursor-opacity=\"1\">\n  <a-entity camera=\"fov: ${fov}; near: ${near}; far: ${far}\" look-controls=\"enabled: ${look-controls-enabled}\" wasd-controls=\"enabled: ${wasd-controls-enabled}\">\n    <a-entity visible=\"${cursor-visible}\" position=\"0 0 -${cursor-offset}\" geometry=\"primitive: ring; radiusOuter: 0.016; radiusInner: 0.01\" material=\"color: ${cursor-color}; shader: flat; transparent: true; opacity: ${cursor-opacity}\" scale=\"${cursor-scale} ${cursor-scale} ${cursor-scale}\" cursor=\"maxDistance: ${cursor-maxdistance};\">\n    </a-entity>\n  </a-entity>\n</template>");
+
+})
+},{}],65:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-cube\" width=\"1.5\" height=\"1.5\" depth=\"1.5\" translate=\"0 0 0\" color=\"gray\" opacity=\"1.0\" shader=\"standard\" transparent=\"true\" metalness=\"0.0\" roughness=\"0.5\" src=\"\">\n  <a-entity geometry=\"primitive: box;\n                      width: ${width};\n                      height: ${height};\n                      depth: ${depth};\n                      translate: ${translate}\" material=\"color: ${color};\n                      opacity: ${opacity};\n                      shader: ${shader};\n                      transparent: ${transparent};\n                      metalness: ${metalness};\n                      roughness: ${roughness};\n                      src: url(${src})\"></a-entity>\n</template>");
+
+})
+},{}],66:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-curvedimage\" radius=\"1\" height=\"1\" segments-radius=\"48\" theta-start=\"0\" theta-length=\"360\" opacity=\"1.0\" transparent=\"true\" src=\"\">\n  <a-entity geometry=\"primitive: cylinder;\n                      radius: ${radius};\n                      height: ${height};\n                      segmentsRadius: ${segments-radius};\n                      segmentsHeight: 1;\n                      thetaStart: ${theta-start};\n                      thetaLength: ${theta-length};\n                      openEnded: true\" scale=\"1 1 -1\" material=\"opacity: ${opacity};\n                      shader: flat;\n                      side: double;\n                      transparent: ${transparent};\n                      src: url(${src})\"></a-entity>\n</template>");
+
+})
+},{}],67:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-cylinder\" radius=\"0.75\" radius-top=\"0.75\" radius-bottom=\"0.75\" height=\"1.5\" segments-radial=\"36\" segments-height=\"1\" theta-start=\"0\" theta-length=\"360\" open-ended=\"false\" translate=\"0 0 0\" color=\"gray\" opacity=\"1.0\" shader=\"standard\" transparent=\"true\" metalness=\"0.0\" roughness=\"0.5\" side=\"front\" src=\"\">\n  <a-entity geometry=\"primitive: cylinder;\n                      radius: ${radius};\n                      radiusTop: ${radius-top};\n                      radiusBottom: ${radius-bottom};\n                      height: ${height};\n                      segmentsRadial: ${segments-radial};\n                      segmentsHeight: ${segments-height};\n                      thetaStart: ${theta-start};\n                      thetaLength: ${theta-length};\n                      openEnded: ${open-ended};\n                      translate: ${translate}\" material=\"color: ${color};\n                      opacity: ${opacity};\n                      shader: ${shader};\n                      metalness: ${metalness};\n                      roughness: ${roughness};\n                      side: ${side};\n                      transparent: ${transparent};\n                      src: url(${src})\"></a-entity>\n</template>");
+
+})
+},{}],68:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-frame\" size=\"10\" thickness=\"0.1\" color=\"#404040\">\n  <a-cube position=\"5 5 0\" rotation=\"0 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"5 -5 0\" rotation=\"0 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"-5 5 0\" rotation=\"0 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"-5 -5 0\" rotation=\"0 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n\n  <a-cube position=\"0 5 5\" rotation=\"0 90 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"0 5 -5\" rotation=\"0 90 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"0 -5 5\" rotation=\"0 90 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"0 -5 -5\" rotation=\"0 90 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n\n  <a-cube position=\"5 0 5\" rotation=\"90 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"5 0 -5\" rotation=\"90 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"-5 0 5\" rotation=\"90 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n  <a-cube position=\"-5 0 -5\" rotation=\"90 0 0\" width=\"${thickness}\" height=\"${thickness}\" depth=\"${size}\" color=\"${color}\"></a-cube>\n</template>");
+
+})
+},{}],69:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-image\" width=\"1.75\" height=\"1.75\" opacity=\"1.0\" src=\"\">\n  <a-entity geometry=\"primitive: plane;\n                      width: ${width};\n                      height: ${height}\" material=\"shader: flat;\n                      src: url(${src});\n                      opacity: ${opacity};\n                      side: double;\n                      transparent: true\">\n  </a-entity>\n</template>");
+
+})
+},{}],70:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-light\" angle=\"60\" color=\"#fff\" ground-color=\"#fff\" decay=\"1\" distance=\"0.0\" exponent=\"10.0\" intensity=\"1.0\" type=\"directional\">\n  <a-entity light=\"angle: ${angle};\n                   color: ${color};\n                   groundColor: ${ground-color};\n                   decay: ${decay};\n                   distance: ${distance};\n                   exponent: ${exponent};\n                   intensity: ${intensity};\n                   type: ${type}\">\n  </a-entity>\n</template>");
+
+})
+},{}],71:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-model\" opacity=\"1.0\" src=\"\" format=\"collada\">\n  <a-entity material=\"opacity: ${opacity}\" loader=\"src: url(${src}); format: ${format}\">\n  </a-entity>\n</template>");
+
+})
+},{}],72:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-plane\" width=\"1.75\" height=\"1.75\" translate=\"0 0 0\" color=\"gray\" opacity=\"1.0\" shader=\"standard\" transparent=\"true\" metalness=\"0.0\" roughness=\"0.5\" src=\"\">\n  <a-entity geometry=\"primitive: plane;\n                      height: ${height};\n                      width: ${width};\n                      translate: ${translate}\" material=\"color: ${color};\n                      opacity: ${opacity};\n                      shader: ${shader};\n                      transparent: ${transparent};\n                      metalness: ${metalness};\n                      roughness: ${roughness};\n                      side: double;\n                      src: url(${src})\"></a-entity>\n</template>");
+
+})
+},{}],73:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-sky\" src=\"\" color=\"#FFF\" radius=\"5000\" segments-width=\"64\" segments-height=\"64\">\n  <a-entity geometry=\"primitive: sphere;\n                      radius: ${radius};\n                      segmentsWidth: ${segments-width};\n                      segmentsHeight: ${segments-height}\" material=\"shader: flat; \n                      src: url(${src});\n                      color: ${color};\n                      fog: false\" scale=\"-1 1 1\">\n  </a-entity>\n</template>");
+
+})
+},{}],74:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-sphere\" radius=\"0.85\" segments-width=\"36\" segments-height=\"18\" translate=\"0 0 0\" color=\"gray\" opacity=\"1.0\" shader=\"standard\" transparent=\"true\" metalness=\"0.0\" roughness=\"0.5\" src=\"\">\n  <a-entity geometry=\"primitive: sphere;\n                      radius: ${radius};\n                      segmentsWidth: ${segments-width};\n                      segmentsHeight: ${segments-height};\n                      translate: ${translate}\" material=\"color: ${color};\n                      opacity: ${opacity};\n                      shader: ${shader};\n                      transparent: ${transparent};\n                      metalness: ${metalness};\n                      roughness: ${roughness};\n                      src: url(${src})\"></a-entity>\n</template>");
+
+})
+},{}],75:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-video\" src=\"\" width=\"3\" height=\"1.75\" translate=\"0 0 0\" autoplay=\"true\" loop=\"true\" crossorigin=\"anonymous\">\n  <video id=\"video\" src=\"${src}\" width=\"${width}\" height=\"${height}\" autoplay=\"${autoplay}\" loop=\"${loop}\" crossorigin=\"${crossOrigin}\" style=\"display: none\">\n  </video>\n  <a-entity geometry=\"primitive: plane;\n                      height: ${height};\n                      width: ${width};\n                      translate: ${translate}\" material=\"shader: flat; src: #video\">\n  </a-entity>\n</template>");
+
+})
+},{}],76:[function(require,module,exports){
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<template is=\"a-template\" element=\"a-videosphere\" src=\"\" radius=\"5000\" segments-width=\"64\" segments-height=\"64\" autoplay=\"true\" loop=\"true\" crossorigin=\"anonymous\">\n  <video id=\"video\" src=\"${src}\" width=\"1000\" height=\"500\" autoplay=\"${autoplay}\" loop=\"${loop}\" crossorigin=\"${crossOrigin}\" style=\"display: none\">\n  </video>\n  <a-entity geometry=\"primitive: sphere;\n                      radius: ${radius};\n                      segmentsWidth: ${segments-width};\n                      segmentsHeight: ${segments-height};\" material=\"shader: flat; src: #video;\" scale=\"-1 1 1\">\n  </a-entity>\n</template>");
+
+})
+},{}],77:[function(require,module,exports){
+require("./a-camera.html");
+require("./a-cube.html");
+require("./a-curvedimage.html");
+require("./a-cylinder.html");
+require("./a-frame.html");
+require("./a-image.html");
+require("./a-light.html");
+require("./a-model.html");
+require("./a-plane.html");
+require("./a-sky/index.html");
+require("./a-sphere.html");
+require("./a-video.html");
+require("./a-videosphere.html");
+document.addEventListener("DOMContentLoaded",function() {
+var head = document.getElementsByTagName("head")[0];
+head.insertAdjacentHTML("beforeend","<meta charset=\"utf-8\">");
+
+})
+},{"./a-camera.html":64,"./a-cube.html":65,"./a-curvedimage.html":66,"./a-cylinder.html":67,"./a-frame.html":68,"./a-image.html":69,"./a-light.html":70,"./a-model.html":71,"./a-plane.html":72,"./a-sky/index.html":73,"./a-sphere.html":74,"./a-video.html":75,"./a-videosphere.html":76}],78:[function(require,module,exports){
+var aframeCore = require('aframe-core');
+var coreElements = require('./elements/');
+var pkg = require('./package');
+var registerTemplate = require('./elements/lib/register-template');
+
+module.exports = {
+  // Main library.
+  aframeCore: aframeCore,
+
+  // Custom elements.
+  elements: {
+    core: coreElements
+  },
+
+  // Register custom elements.
+  registerTemplate: registerTemplate,
+
+  // Package version.
+  version: pkg.version
+};
+
+},{"./elements/":61,"./elements/lib/register-template":62,"./package":80,"aframe-core":39}],79:[function(require,module,exports){
+/**
+ * @license
+ * Copyright (c) 2014 The Polymer Project Authors. All rights reserved.
+ * This code may only be used under the BSD style license found at http://polymer.github.io/LICENSE.txt
+ * The complete set of authors may be found at http://polymer.github.io/AUTHORS.txt
+ * The complete set of contributors may be found at http://polymer.github.io/CONTRIBUTORS.txt
+ * Code distributed by Google as part of the polymer project is also
+ * subject to an additional IP rights grant found at http://polymer.github.io/PATENTS.txt
+ */
+// @version 0.7.14-c469b00
+if (typeof WeakMap === "undefined") {
+  (function() {
+    var defineProperty = Object.defineProperty;
+    var counter = Date.now() % 1e9;
+    var WeakMap = function() {
+      this.name = "__st" + (Math.random() * 1e9 >>> 0) + (counter++ + "__");
+    };
+    WeakMap.prototype = {
+      set: function(key, value) {
+        var entry = key[this.name];
+        if (entry && entry[0] === key) entry[1] = value; else defineProperty(key, this.name, {
+          value: [ key, value ],
+          writable: true
+        });
+        return this;
+      },
+      get: function(key) {
+        var entry;
+        return (entry = key[this.name]) && entry[0] === key ? entry[1] : undefined;
+      },
+      "delete": function(key) {
+        var entry = key[this.name];
+        if (!entry || entry[0] !== key) return false;
+        entry[0] = entry[1] = undefined;
+        return true;
+      },
+      has: function(key) {
+        var entry = key[this.name];
+        if (!entry) return false;
+        return entry[0] === key;
+      }
+    };
+    window.WeakMap = WeakMap;
+  })();
+}
+
+(function(global) {
+  var registrationsTable = new WeakMap();
+  var setImmediate;
+  if (/Trident|Edge/.test(navigator.userAgent)) {
+    setImmediate = setTimeout;
+  } else if (window.setImmediate) {
+    setImmediate = window.setImmediate;
+  } else {
+    var setImmediateQueue = [];
+    var sentinel = String(Math.random());
+    window.addEventListener("message", function(e) {
+      if (e.data === sentinel) {
+        var queue = setImmediateQueue;
+        setImmediateQueue = [];
+        queue.forEach(function(func) {
+          func();
+        });
+      }
+    });
+    setImmediate = function(func) {
+      setImmediateQueue.push(func);
+      window.postMessage(sentinel, "*");
+    };
+  }
+  var isScheduled = false;
+  var scheduledObservers = [];
+  function scheduleCallback(observer) {
+    scheduledObservers.push(observer);
+    if (!isScheduled) {
+      isScheduled = true;
+      setImmediate(dispatchCallbacks);
+    }
+  }
+  function wrapIfNeeded(node) {
+    return window.ShadowDOMPolyfill && window.ShadowDOMPolyfill.wrapIfNeeded(node) || node;
+  }
+  function dispatchCallbacks() {
+    isScheduled = false;
+    var observers = scheduledObservers;
+    scheduledObservers = [];
+    observers.sort(function(o1, o2) {
+      return o1.uid_ - o2.uid_;
+    });
+    var anyNonEmpty = false;
+    observers.forEach(function(observer) {
+      var queue = observer.takeRecords();
+      removeTransientObserversFor(observer);
+      if (queue.length) {
+        observer.callback_(queue, observer);
+        anyNonEmpty = true;
+      }
+    });
+    if (anyNonEmpty) dispatchCallbacks();
+  }
+  function removeTransientObserversFor(observer) {
+    observer.nodes_.forEach(function(node) {
+      var registrations = registrationsTable.get(node);
+      if (!registrations) return;
+      registrations.forEach(function(registration) {
+        if (registration.observer === observer) registration.removeTransientObservers();
+      });
+    });
+  }
+  function forEachAncestorAndObserverEnqueueRecord(target, callback) {
+    for (var node = target; node; node = node.parentNode) {
+      var registrations = registrationsTable.get(node);
+      if (registrations) {
+        for (var j = 0; j < registrations.length; j++) {
+          var registration = registrations[j];
+          var options = registration.options;
+          if (node !== target && !options.subtree) continue;
+          var record = callback(options);
+          if (record) registration.enqueue(record);
+        }
+      }
+    }
+  }
+  var uidCounter = 0;
+  function JsMutationObserver(callback) {
+    this.callback_ = callback;
+    this.nodes_ = [];
+    this.records_ = [];
+    this.uid_ = ++uidCounter;
+  }
+  JsMutationObserver.prototype = {
+    observe: function(target, options) {
+      target = wrapIfNeeded(target);
+      if (!options.childList && !options.attributes && !options.characterData || options.attributeOldValue && !options.attributes || options.attributeFilter && options.attributeFilter.length && !options.attributes || options.characterDataOldValue && !options.characterData) {
+        throw new SyntaxError();
+      }
+      var registrations = registrationsTable.get(target);
+      if (!registrations) registrationsTable.set(target, registrations = []);
+      var registration;
+      for (var i = 0; i < registrations.length; i++) {
+        if (registrations[i].observer === this) {
+          registration = registrations[i];
+          registration.removeListeners();
+          registration.options = options;
+          break;
+        }
+      }
+      if (!registration) {
+        registration = new Registration(this, target, options);
+        registrations.push(registration);
+        this.nodes_.push(target);
+      }
+      registration.addListeners();
+    },
+    disconnect: function() {
+      this.nodes_.forEach(function(node) {
+        var registrations = registrationsTable.get(node);
+        for (var i = 0; i < registrations.length; i++) {
+          var registration = registrations[i];
+          if (registration.observer === this) {
+            registration.removeListeners();
+            registrations.splice(i, 1);
+            break;
+          }
+        }
+      }, this);
+      this.records_ = [];
+    },
+    takeRecords: function() {
+      var copyOfRecords = this.records_;
+      this.records_ = [];
+      return copyOfRecords;
+    }
+  };
+  function MutationRecord(type, target) {
+    this.type = type;
+    this.target = target;
+    this.addedNodes = [];
+    this.removedNodes = [];
+    this.previousSibling = null;
+    this.nextSibling = null;
+    this.attributeName = null;
+    this.attributeNamespace = null;
+    this.oldValue = null;
+  }
+  function copyMutationRecord(original) {
+    var record = new MutationRecord(original.type, original.target);
+    record.addedNodes = original.addedNodes.slice();
+    record.removedNodes = original.removedNodes.slice();
+    record.previousSibling = original.previousSibling;
+    record.nextSibling = original.nextSibling;
+    record.attributeName = original.attributeName;
+    record.attributeNamespace = original.attributeNamespace;
+    record.oldValue = original.oldValue;
+    return record;
+  }
+  var currentRecord, recordWithOldValue;
+  function getRecord(type, target) {
+    return currentRecord = new MutationRecord(type, target);
+  }
+  function getRecordWithOldValue(oldValue) {
+    if (recordWithOldValue) return recordWithOldValue;
+    recordWithOldValue = copyMutationRecord(currentRecord);
+    recordWithOldValue.oldValue = oldValue;
+    return recordWithOldValue;
+  }
+  function clearRecords() {
+    currentRecord = recordWithOldValue = undefined;
+  }
+  function recordRepresentsCurrentMutation(record) {
+    return record === recordWithOldValue || record === currentRecord;
+  }
+  function selectRecord(lastRecord, newRecord) {
+    if (lastRecord === newRecord) return lastRecord;
+    if (recordWithOldValue && recordRepresentsCurrentMutation(lastRecord)) return recordWithOldValue;
+    return null;
+  }
+  function Registration(observer, target, options) {
+    this.observer = observer;
+    this.target = target;
+    this.options = options;
+    this.transientObservedNodes = [];
+  }
+  Registration.prototype = {
+    enqueue: function(record) {
+      var records = this.observer.records_;
+      var length = records.length;
+      if (records.length > 0) {
+        var lastRecord = records[length - 1];
+        var recordToReplaceLast = selectRecord(lastRecord, record);
+        if (recordToReplaceLast) {
+          records[length - 1] = recordToReplaceLast;
+          return;
+        }
+      } else {
+        scheduleCallback(this.observer);
+      }
+      records[length] = record;
+    },
+    addListeners: function() {
+      this.addListeners_(this.target);
+    },
+    addListeners_: function(node) {
+      var options = this.options;
+      if (options.attributes) node.addEventListener("DOMAttrModified", this, true);
+      if (options.characterData) node.addEventListener("DOMCharacterDataModified", this, true);
+      if (options.childList) node.addEventListener("DOMNodeInserted", this, true);
+      if (options.childList || options.subtree) node.addEventListener("DOMNodeRemoved", this, true);
+    },
+    removeListeners: function() {
+      this.removeListeners_(this.target);
+    },
+    removeListeners_: function(node) {
+      var options = this.options;
+      if (options.attributes) node.removeEventListener("DOMAttrModified", this, true);
+      if (options.characterData) node.removeEventListener("DOMCharacterDataModified", this, true);
+      if (options.childList) node.removeEventListener("DOMNodeInserted", this, true);
+      if (options.childList || options.subtree) node.removeEventListener("DOMNodeRemoved", this, true);
+    },
+    addTransientObserver: function(node) {
+      if (node === this.target) return;
+      this.addListeners_(node);
+      this.transientObservedNodes.push(node);
+      var registrations = registrationsTable.get(node);
+      if (!registrations) registrationsTable.set(node, registrations = []);
+      registrations.push(this);
+    },
+    removeTransientObservers: function() {
+      var transientObservedNodes = this.transientObservedNodes;
+      this.transientObservedNodes = [];
+      transientObservedNodes.forEach(function(node) {
+        this.removeListeners_(node);
+        var registrations = registrationsTable.get(node);
+        for (var i = 0; i < registrations.length; i++) {
+          if (registrations[i] === this) {
+            registrations.splice(i, 1);
+            break;
+          }
+        }
+      }, this);
+    },
+    handleEvent: function(e) {
+      e.stopImmediatePropagation();
+      switch (e.type) {
+       case "DOMAttrModified":
+        var name = e.attrName;
+        var namespace = e.relatedNode.namespaceURI;
+        var target = e.target;
+        var record = new getRecord("attributes", target);
+        record.attributeName = name;
+        record.attributeNamespace = namespace;
+        var oldValue = e.attrChange === MutationEvent.ADDITION ? null : e.prevValue;
+        forEachAncestorAndObserverEnqueueRecord(target, function(options) {
+          if (!options.attributes) return;
+          if (options.attributeFilter && options.attributeFilter.length && options.attributeFilter.indexOf(name) === -1 && options.attributeFilter.indexOf(namespace) === -1) {
+            return;
+          }
+          if (options.attributeOldValue) return getRecordWithOldValue(oldValue);
+          return record;
+        });
+        break;
+
+       case "DOMCharacterDataModified":
+        var target = e.target;
+        var record = getRecord("characterData", target);
+        var oldValue = e.prevValue;
+        forEachAncestorAndObserverEnqueueRecord(target, function(options) {
+          if (!options.characterData) return;
+          if (options.characterDataOldValue) return getRecordWithOldValue(oldValue);
+          return record;
+        });
+        break;
+
+       case "DOMNodeRemoved":
+        this.addTransientObserver(e.target);
+
+       case "DOMNodeInserted":
+        var changedNode = e.target;
+        var addedNodes, removedNodes;
+        if (e.type === "DOMNodeInserted") {
+          addedNodes = [ changedNode ];
+          removedNodes = [];
+        } else {
+          addedNodes = [];
+          removedNodes = [ changedNode ];
+        }
+        var previousSibling = changedNode.previousSibling;
+        var nextSibling = changedNode.nextSibling;
+        var record = getRecord("childList", e.target.parentNode);
+        record.addedNodes = addedNodes;
+        record.removedNodes = removedNodes;
+        record.previousSibling = previousSibling;
+        record.nextSibling = nextSibling;
+        forEachAncestorAndObserverEnqueueRecord(e.relatedNode, function(options) {
+          if (!options.childList) return;
+          return record;
+        });
+      }
+      clearRecords();
+    }
+  };
+  global.JsMutationObserver = JsMutationObserver;
+  if (!global.MutationObserver) global.MutationObserver = JsMutationObserver;
+})(self);
+
+window.HTMLImports = window.HTMLImports || {
+  flags: {}
+};
+
+(function(scope) {
+  var IMPORT_LINK_TYPE = "import";
+  var useNative = Boolean(IMPORT_LINK_TYPE in document.createElement("link"));
+  var hasShadowDOMPolyfill = Boolean(window.ShadowDOMPolyfill);
+  var wrap = function(node) {
+    return hasShadowDOMPolyfill ? window.ShadowDOMPolyfill.wrapIfNeeded(node) : node;
+  };
+  var rootDocument = wrap(document);
+  var currentScriptDescriptor = {
+    get: function() {
+      var script = window.HTMLImports.currentScript || document.currentScript || (document.readyState !== "complete" ? document.scripts[document.scripts.length - 1] : null);
+      return wrap(script);
+    },
+    configurable: true
+  };
+  Object.defineProperty(document, "_currentScript", currentScriptDescriptor);
+  Object.defineProperty(rootDocument, "_currentScript", currentScriptDescriptor);
+  var isIE = /Trident/.test(navigator.userAgent);
+  function whenReady(callback, doc) {
+    doc = doc || rootDocument;
+    whenDocumentReady(function() {
+      watchImportsLoad(callback, doc);
+    }, doc);
+  }
+  var requiredReadyState = isIE ? "complete" : "interactive";
+  var READY_EVENT = "readystatechange";
+  function isDocumentReady(doc) {
+    return doc.readyState === "complete" || doc.readyState === requiredReadyState;
+  }
+  function whenDocumentReady(callback, doc) {
+    if (!isDocumentReady(doc)) {
+      var checkReady = function() {
+        if (doc.readyState === "complete" || doc.readyState === requiredReadyState) {
+          doc.removeEventListener(READY_EVENT, checkReady);
+          whenDocumentReady(callback, doc);
+        }
+      };
+      doc.addEventListener(READY_EVENT, checkReady);
+    } else if (callback) {
+      callback();
+    }
+  }
+  function markTargetLoaded(event) {
+    event.target.__loaded = true;
+  }
+  function watchImportsLoad(callback, doc) {
+    var imports = doc.querySelectorAll("link[rel=import]");
+    var parsedCount = 0, importCount = imports.length, newImports = [], errorImports = [];
+    function checkDone() {
+      if (parsedCount == importCount && callback) {
+        callback({
+          allImports: imports,
+          loadedImports: newImports,
+          errorImports: errorImports
+        });
+      }
+    }
+    function loadedImport(e) {
+      markTargetLoaded(e);
+      newImports.push(this);
+      parsedCount++;
+      checkDone();
+    }
+    function errorLoadingImport(e) {
+      errorImports.push(this);
+      parsedCount++;
+      checkDone();
+    }
+    if (importCount) {
+      for (var i = 0, imp; i < importCount && (imp = imports[i]); i++) {
+        if (isImportLoaded(imp)) {
+          parsedCount++;
+          checkDone();
+        } else {
+          imp.addEventListener("load", loadedImport);
+          imp.addEventListener("error", errorLoadingImport);
+        }
+      }
+    } else {
+      checkDone();
+    }
+  }
+  function isImportLoaded(link) {
+    return useNative ? link.__loaded || link.import && link.import.readyState !== "loading" : link.__importParsed;
+  }
+  if (useNative) {
+    new MutationObserver(function(mxns) {
+      for (var i = 0, l = mxns.length, m; i < l && (m = mxns[i]); i++) {
+        if (m.addedNodes) {
+          handleImports(m.addedNodes);
+        }
+      }
+    }).observe(document.head, {
+      childList: true
+    });
+    function handleImports(nodes) {
+      for (var i = 0, l = nodes.length, n; i < l && (n = nodes[i]); i++) {
+        if (isImport(n)) {
+          handleImport(n);
+        }
+      }
+    }
+    function isImport(element) {
+      return element.localName === "link" && element.rel === "import";
+    }
+    function handleImport(element) {
+      var loaded = element.import;
+      if (loaded) {
+        markTargetLoaded({
+          target: element
+        });
+      } else {
+        element.addEventListener("load", markTargetLoaded);
+        element.addEventListener("error", markTargetLoaded);
+      }
+    }
+    (function() {
+      if (document.readyState === "loading") {
+        var imports = document.querySelectorAll("link[rel=import]");
+        for (var i = 0, l = imports.length, imp; i < l && (imp = imports[i]); i++) {
+          handleImport(imp);
+        }
+      }
+    })();
+  }
+  whenReady(function(detail) {
+    window.HTMLImports.ready = true;
+    window.HTMLImports.readyTime = new Date().getTime();
+    var evt = rootDocument.createEvent("CustomEvent");
+    evt.initCustomEvent("HTMLImportsLoaded", true, true, detail);
+    rootDocument.dispatchEvent(evt);
+  });
+  scope.IMPORT_LINK_TYPE = IMPORT_LINK_TYPE;
+  scope.useNative = useNative;
+  scope.rootDocument = rootDocument;
+  scope.whenReady = whenReady;
+  scope.isIE = isIE;
+})(window.HTMLImports);
+
+(function(scope) {
+  var modules = [];
+  var addModule = function(module) {
+    modules.push(module);
+  };
+  var initializeModules = function() {
+    modules.forEach(function(module) {
+      module(scope);
+    });
+  };
+  scope.addModule = addModule;
+  scope.initializeModules = initializeModules;
+})(window.HTMLImports);
+
+window.HTMLImports.addModule(function(scope) {
+  var CSS_URL_REGEXP = /(url\()([^)]*)(\))/g;
+  var CSS_IMPORT_REGEXP = /(@import[\s]+(?!url\())([^;]*)(;)/g;
+  var path = {
+    resolveUrlsInStyle: function(style, linkUrl) {
+      var doc = style.ownerDocument;
+      var resolver = doc.createElement("a");
+      style.textContent = this.resolveUrlsInCssText(style.textContent, linkUrl, resolver);
+      return style;
+    },
+    resolveUrlsInCssText: function(cssText, linkUrl, urlObj) {
+      var r = this.replaceUrls(cssText, urlObj, linkUrl, CSS_URL_REGEXP);
+      r = this.replaceUrls(r, urlObj, linkUrl, CSS_IMPORT_REGEXP);
+      return r;
+    },
+    replaceUrls: function(text, urlObj, linkUrl, regexp) {
+      return text.replace(regexp, function(m, pre, url, post) {
+        var urlPath = url.replace(/["']/g, "");
+        if (linkUrl) {
+          urlPath = new URL(urlPath, linkUrl).href;
+        }
+        urlObj.href = urlPath;
+        urlPath = urlObj.href;
+        return pre + "'" + urlPath + "'" + post;
+      });
+    }
+  };
+  scope.path = path;
+});
+
+window.HTMLImports.addModule(function(scope) {
+  var xhr = {
+    async: true,
+    ok: function(request) {
+      return request.status >= 200 && request.status < 300 || request.status === 304 || request.status === 0;
+    },
+    load: function(url, next, nextContext) {
+      var request = new XMLHttpRequest();
+      if (scope.flags.debug || scope.flags.bust) {
+        url += "?" + Math.random();
+      }
+      request.open("GET", url, xhr.async);
+      request.addEventListener("readystatechange", function(e) {
+        if (request.readyState === 4) {
+          var locationHeader = request.getResponseHeader("Location");
+          var redirectedUrl = null;
+          if (locationHeader) {
+            var redirectedUrl = locationHeader.substr(0, 1) === "/" ? location.origin + locationHeader : locationHeader;
+          }
+          next.call(nextContext, !xhr.ok(request) && request, request.response || request.responseText, redirectedUrl);
+        }
+      });
+      request.send();
+      return request;
+    },
+    loadDocument: function(url, next, nextContext) {
+      this.load(url, next, nextContext).responseType = "document";
+    }
+  };
+  scope.xhr = xhr;
+});
+
+window.HTMLImports.addModule(function(scope) {
+  var xhr = scope.xhr;
+  var flags = scope.flags;
+  var Loader = function(onLoad, onComplete) {
+    this.cache = {};
+    this.onload = onLoad;
+    this.oncomplete = onComplete;
+    this.inflight = 0;
+    this.pending = {};
+  };
+  Loader.prototype = {
+    addNodes: function(nodes) {
+      this.inflight += nodes.length;
+      for (var i = 0, l = nodes.length, n; i < l && (n = nodes[i]); i++) {
+        this.require(n);
+      }
+      this.checkDone();
+    },
+    addNode: function(node) {
+      this.inflight++;
+      this.require(node);
+      this.checkDone();
+    },
+    require: function(elt) {
+      var url = elt.src || elt.href;
+      elt.__nodeUrl = url;
+      if (!this.dedupe(url, elt)) {
+        this.fetch(url, elt);
+      }
+    },
+    dedupe: function(url, elt) {
+      if (this.pending[url]) {
+        this.pending[url].push(elt);
+        return true;
+      }
+      var resource;
+      if (this.cache[url]) {
+        this.onload(url, elt, this.cache[url]);
+        this.tail();
+        return true;
+      }
+      this.pending[url] = [ elt ];
+      return false;
+    },
+    fetch: function(url, elt) {
+      flags.load && console.log("fetch", url, elt);
+      if (!url) {
+        setTimeout(function() {
+          this.receive(url, elt, {
+            error: "href must be specified"
+          }, null);
+        }.bind(this), 0);
+      } else if (url.match(/^data:/)) {
+        var pieces = url.split(",");
+        var header = pieces[0];
+        var body = pieces[1];
+        if (header.indexOf(";base64") > -1) {
+          body = atob(body);
+        } else {
+          body = decodeURIComponent(body);
+        }
+        setTimeout(function() {
+          this.receive(url, elt, null, body);
+        }.bind(this), 0);
+      } else {
+        var receiveXhr = function(err, resource, redirectedUrl) {
+          this.receive(url, elt, err, resource, redirectedUrl);
+        }.bind(this);
+        xhr.load(url, receiveXhr);
+      }
+    },
+    receive: function(url, elt, err, resource, redirectedUrl) {
+      this.cache[url] = resource;
+      var $p = this.pending[url];
+      for (var i = 0, l = $p.length, p; i < l && (p = $p[i]); i++) {
+        this.onload(url, p, resource, err, redirectedUrl);
+        this.tail();
+      }
+      this.pending[url] = null;
+    },
+    tail: function() {
+      --this.inflight;
+      this.checkDone();
+    },
+    checkDone: function() {
+      if (!this.inflight) {
+        this.oncomplete();
+      }
+    }
+  };
+  scope.Loader = Loader;
+});
+
+window.HTMLImports.addModule(function(scope) {
+  var Observer = function(addCallback) {
+    this.addCallback = addCallback;
+    this.mo = new MutationObserver(this.handler.bind(this));
+  };
+  Observer.prototype = {
+    handler: function(mutations) {
+      for (var i = 0, l = mutations.length, m; i < l && (m = mutations[i]); i++) {
+        if (m.type === "childList" && m.addedNodes.length) {
+          this.addedNodes(m.addedNodes);
+        }
+      }
+    },
+    addedNodes: function(nodes) {
+      if (this.addCallback) {
+        this.addCallback(nodes);
+      }
+      for (var i = 0, l = nodes.length, n, loading; i < l && (n = nodes[i]); i++) {
+        if (n.children && n.children.length) {
+          this.addedNodes(n.children);
+        }
+      }
+    },
+    observe: function(root) {
+      this.mo.observe(root, {
+        childList: true,
+        subtree: true
+      });
+    }
+  };
+  scope.Observer = Observer;
+});
+
+window.HTMLImports.addModule(function(scope) {
+  var path = scope.path;
+  var rootDocument = scope.rootDocument;
+  var flags = scope.flags;
+  var isIE = scope.isIE;
+  var IMPORT_LINK_TYPE = scope.IMPORT_LINK_TYPE;
+  var IMPORT_SELECTOR = "link[rel=" + IMPORT_LINK_TYPE + "]";
+  var importParser = {
+    documentSelectors: IMPORT_SELECTOR,
+    importsSelectors: [ IMPORT_SELECTOR, "link[rel=stylesheet]:not([type])", "style:not([type])", "script:not([type])", 'script[type="application/javascript"]', 'script[type="text/javascript"]' ].join(","),
+    map: {
+      link: "parseLink",
+      script: "parseScript",
+      style: "parseStyle"
+    },
+    dynamicElements: [],
+    parseNext: function() {
+      var next = this.nextToParse();
+      if (next) {
+        this.parse(next);
+      }
+    },
+    parse: function(elt) {
+      if (this.isParsed(elt)) {
+        flags.parse && console.log("[%s] is already parsed", elt.localName);
+        return;
+      }
+      var fn = this[this.map[elt.localName]];
+      if (fn) {
+        this.markParsing(elt);
+        fn.call(this, elt);
+      }
+    },
+    parseDynamic: function(elt, quiet) {
+      this.dynamicElements.push(elt);
+      if (!quiet) {
+        this.parseNext();
+      }
+    },
+    markParsing: function(elt) {
+      flags.parse && console.log("parsing", elt);
+      this.parsingElement = elt;
+    },
+    markParsingComplete: function(elt) {
+      elt.__importParsed = true;
+      this.markDynamicParsingComplete(elt);
+      if (elt.__importElement) {
+        elt.__importElement.__importParsed = true;
+        this.markDynamicParsingComplete(elt.__importElement);
+      }
+      this.parsingElement = null;
+      flags.parse && console.log("completed", elt);
+    },
+    markDynamicParsingComplete: function(elt) {
+      var i = this.dynamicElements.indexOf(elt);
+      if (i >= 0) {
+        this.dynamicElements.splice(i, 1);
+      }
+    },
+    parseImport: function(elt) {
+      elt.import = elt.__doc;
+      if (window.HTMLImports.__importsParsingHook) {
+        window.HTMLImports.__importsParsingHook(elt);
+      }
+      if (elt.import) {
+        elt.import.__importParsed = true;
+      }
+      this.markParsingComplete(elt);
+      if (elt.__resource && !elt.__error) {
+        elt.dispatchEvent(new CustomEvent("load", {
+          bubbles: false
+        }));
+      } else {
+        elt.dispatchEvent(new CustomEvent("error", {
+          bubbles: false
+        }));
+      }
+      if (elt.__pending) {
+        var fn;
+        while (elt.__pending.length) {
+          fn = elt.__pending.shift();
+          if (fn) {
+            fn({
+              target: elt
+            });
+          }
+        }
+      }
+      this.parseNext();
+    },
+    parseLink: function(linkElt) {
+      if (nodeIsImport(linkElt)) {
+        this.parseImport(linkElt);
+      } else {
+        linkElt.href = linkElt.href;
+        this.parseGeneric(linkElt);
+      }
+    },
+    parseStyle: function(elt) {
+      var src = elt;
+      elt = cloneStyle(elt);
+      src.__appliedElement = elt;
+      elt.__importElement = src;
+      this.parseGeneric(elt);
+    },
+    parseGeneric: function(elt) {
+      this.trackElement(elt);
+      this.addElementToDocument(elt);
+    },
+    rootImportForElement: function(elt) {
+      var n = elt;
+      while (n.ownerDocument.__importLink) {
+        n = n.ownerDocument.__importLink;
+      }
+      return n;
+    },
+    addElementToDocument: function(elt) {
+      var port = this.rootImportForElement(elt.__importElement || elt);
+      port.parentNode.insertBefore(elt, port);
+    },
+    trackElement: function(elt, callback) {
+      var self = this;
+      var done = function(e) {
+        elt.removeEventListener("load", done);
+        elt.removeEventListener("error", done);
+        if (callback) {
+          callback(e);
+        }
+        self.markParsingComplete(elt);
+        self.parseNext();
+      };
+      elt.addEventListener("load", done);
+      elt.addEventListener("error", done);
+      if (isIE && elt.localName === "style") {
+        var fakeLoad = false;
+        if (elt.textContent.indexOf("@import") == -1) {
+          fakeLoad = true;
+        } else if (elt.sheet) {
+          fakeLoad = true;
+          var csr = elt.sheet.cssRules;
+          var len = csr ? csr.length : 0;
+          for (var i = 0, r; i < len && (r = csr[i]); i++) {
+            if (r.type === CSSRule.IMPORT_RULE) {
+              fakeLoad = fakeLoad && Boolean(r.styleSheet);
+            }
+          }
+        }
+        if (fakeLoad) {
+          setTimeout(function() {
+            elt.dispatchEvent(new CustomEvent("load", {
+              bubbles: false
+            }));
+          });
+        }
+      }
+    },
+    parseScript: function(scriptElt) {
+      var script = document.createElement("script");
+      script.__importElement = scriptElt;
+      script.src = scriptElt.src ? scriptElt.src : generateScriptDataUrl(scriptElt);
+      scope.currentScript = scriptElt;
+      this.trackElement(script, function(e) {
+        if (script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+        scope.currentScript = null;
+      });
+      this.addElementToDocument(script);
+    },
+    nextToParse: function() {
+      this._mayParse = [];
+      return !this.parsingElement && (this.nextToParseInDoc(rootDocument) || this.nextToParseDynamic());
+    },
+    nextToParseInDoc: function(doc, link) {
+      if (doc && this._mayParse.indexOf(doc) < 0) {
+        this._mayParse.push(doc);
+        var nodes = doc.querySelectorAll(this.parseSelectorsForNode(doc));
+        for (var i = 0, l = nodes.length, p = 0, n; i < l && (n = nodes[i]); i++) {
+          if (!this.isParsed(n)) {
+            if (this.hasResource(n)) {
+              return nodeIsImport(n) ? this.nextToParseInDoc(n.__doc, n) : n;
+            } else {
+              return;
+            }
+          }
+        }
+      }
+      return link;
+    },
+    nextToParseDynamic: function() {
+      return this.dynamicElements[0];
+    },
+    parseSelectorsForNode: function(node) {
+      var doc = node.ownerDocument || node;
+      return doc === rootDocument ? this.documentSelectors : this.importsSelectors;
+    },
+    isParsed: function(node) {
+      return node.__importParsed;
+    },
+    needsDynamicParsing: function(elt) {
+      return this.dynamicElements.indexOf(elt) >= 0;
+    },
+    hasResource: function(node) {
+      if (nodeIsImport(node) && node.__doc === undefined) {
+        return false;
+      }
+      return true;
+    }
+  };
+  function nodeIsImport(elt) {
+    return elt.localName === "link" && elt.rel === IMPORT_LINK_TYPE;
+  }
+  function generateScriptDataUrl(script) {
+    var scriptContent = generateScriptContent(script);
+    return "data:text/javascript;charset=utf-8," + encodeURIComponent(scriptContent);
+  }
+  function generateScriptContent(script) {
+    return script.textContent + generateSourceMapHint(script);
+  }
+  function generateSourceMapHint(script) {
+    var owner = script.ownerDocument;
+    owner.__importedScripts = owner.__importedScripts || 0;
+    var moniker = script.ownerDocument.baseURI;
+    var num = owner.__importedScripts ? "-" + owner.__importedScripts : "";
+    owner.__importedScripts++;
+    return "\n//# sourceURL=" + moniker + num + ".js\n";
+  }
+  function cloneStyle(style) {
+    var clone = style.ownerDocument.createElement("style");
+    clone.textContent = style.textContent;
+    path.resolveUrlsInStyle(clone);
+    return clone;
+  }
+  scope.parser = importParser;
+  scope.IMPORT_SELECTOR = IMPORT_SELECTOR;
+});
+
+window.HTMLImports.addModule(function(scope) {
+  var flags = scope.flags;
+  var IMPORT_LINK_TYPE = scope.IMPORT_LINK_TYPE;
+  var IMPORT_SELECTOR = scope.IMPORT_SELECTOR;
+  var rootDocument = scope.rootDocument;
+  var Loader = scope.Loader;
+  var Observer = scope.Observer;
+  var parser = scope.parser;
+  var importer = {
+    documents: {},
+    documentPreloadSelectors: IMPORT_SELECTOR,
+    importsPreloadSelectors: [ IMPORT_SELECTOR ].join(","),
+    loadNode: function(node) {
+      importLoader.addNode(node);
+    },
+    loadSubtree: function(parent) {
+      var nodes = this.marshalNodes(parent);
+      importLoader.addNodes(nodes);
+    },
+    marshalNodes: function(parent) {
+      return parent.querySelectorAll(this.loadSelectorsForNode(parent));
+    },
+    loadSelectorsForNode: function(node) {
+      var doc = node.ownerDocument || node;
+      return doc === rootDocument ? this.documentPreloadSelectors : this.importsPreloadSelectors;
+    },
+    loaded: function(url, elt, resource, err, redirectedUrl) {
+      flags.load && console.log("loaded", url, elt);
+      elt.__resource = resource;
+      elt.__error = err;
+      if (isImportLink(elt)) {
+        var doc = this.documents[url];
+        if (doc === undefined) {
+          doc = err ? null : makeDocument(resource, redirectedUrl || url);
+          if (doc) {
+            doc.__importLink = elt;
+            this.bootDocument(doc);
+          }
+          this.documents[url] = doc;
+        }
+        elt.__doc = doc;
+      }
+      parser.parseNext();
+    },
+    bootDocument: function(doc) {
+      this.loadSubtree(doc);
+      this.observer.observe(doc);
+      parser.parseNext();
+    },
+    loadedAll: function() {
+      parser.parseNext();
+    }
+  };
+  var importLoader = new Loader(importer.loaded.bind(importer), importer.loadedAll.bind(importer));
+  importer.observer = new Observer();
+  function isImportLink(elt) {
+    return isLinkRel(elt, IMPORT_LINK_TYPE);
+  }
+  function isLinkRel(elt, rel) {
+    return elt.localName === "link" && elt.getAttribute("rel") === rel;
+  }
+  function hasBaseURIAccessor(doc) {
+    return !!Object.getOwnPropertyDescriptor(doc, "baseURI");
+  }
+  function makeDocument(resource, url) {
+    var doc = document.implementation.createHTMLDocument(IMPORT_LINK_TYPE);
+    doc._URL = url;
+    var base = doc.createElement("base");
+    base.setAttribute("href", url);
+    if (!doc.baseURI && !hasBaseURIAccessor(doc)) {
+      Object.defineProperty(doc, "baseURI", {
+        value: url
+      });
+    }
+    var meta = doc.createElement("meta");
+    meta.setAttribute("charset", "utf-8");
+    doc.head.appendChild(meta);
+    doc.head.appendChild(base);
+    doc.body.innerHTML = resource;
+    if (window.HTMLTemplateElement && HTMLTemplateElement.bootstrap) {
+      HTMLTemplateElement.bootstrap(doc);
+    }
+    return doc;
+  }
+  if (!document.baseURI) {
+    var baseURIDescriptor = {
+      get: function() {
+        var base = document.querySelector("base");
+        return base ? base.href : window.location.href;
+      },
+      configurable: true
+    };
+    Object.defineProperty(document, "baseURI", baseURIDescriptor);
+    Object.defineProperty(rootDocument, "baseURI", baseURIDescriptor);
+  }
+  scope.importer = importer;
+  scope.importLoader = importLoader;
+});
+
+window.HTMLImports.addModule(function(scope) {
+  var parser = scope.parser;
+  var importer = scope.importer;
+  var dynamic = {
+    added: function(nodes) {
+      var owner, parsed, loading;
+      for (var i = 0, l = nodes.length, n; i < l && (n = nodes[i]); i++) {
+        if (!owner) {
+          owner = n.ownerDocument;
+          parsed = parser.isParsed(owner);
+        }
+        loading = this.shouldLoadNode(n);
+        if (loading) {
+          importer.loadNode(n);
+        }
+        if (this.shouldParseNode(n) && parsed) {
+          parser.parseDynamic(n, loading);
+        }
+      }
+    },
+    shouldLoadNode: function(node) {
+      return node.nodeType === 1 && matches.call(node, importer.loadSelectorsForNode(node));
+    },
+    shouldParseNode: function(node) {
+      return node.nodeType === 1 && matches.call(node, parser.parseSelectorsForNode(node));
+    }
+  };
+  importer.observer.addCallback = dynamic.added.bind(dynamic);
+  var matches = HTMLElement.prototype.matches || HTMLElement.prototype.matchesSelector || HTMLElement.prototype.webkitMatchesSelector || HTMLElement.prototype.mozMatchesSelector || HTMLElement.prototype.msMatchesSelector;
+});
+
+(function(scope) {
+  var initializeModules = scope.initializeModules;
+  var isIE = scope.isIE;
+  if (scope.useNative) {
+    return;
+  }
+  if (!window.CustomEvent || isIE && typeof window.CustomEvent !== "function") {
+    window.CustomEvent = function(inType, params) {
+      params = params || {};
+      var e = document.createEvent("CustomEvent");
+      e.initCustomEvent(inType, Boolean(params.bubbles), Boolean(params.cancelable), params.detail);
+      e.preventDefault = function() {
+        Object.defineProperty(this, "defaultPrevented", {
+          get: function() {
+            return true;
+          }
+        });
+      };
+      return e;
+    };
+    window.CustomEvent.prototype = window.Event.prototype;
+  }
+  initializeModules();
+  var rootDocument = scope.rootDocument;
+  function bootstrap() {
+    window.HTMLImports.importer.bootDocument(rootDocument);
+  }
+  if (document.readyState === "complete" || document.readyState === "interactive" && !window.attachEvent) {
+    bootstrap();
+  } else {
+    document.addEventListener("DOMContentLoaded", bootstrap);
+  }
+})(window.HTMLImports);
+},{}],80:[function(require,module,exports){
+module.exports={
+  "_args": [
+    [
+      "aframe@^0.1.1",
+      "/Users/wli/code/webVR"
+    ]
+  ],
+  "_from": "aframe@>=0.1.1 <0.2.0",
+  "_id": "aframe@0.1.1",
+  "_inCache": true,
+  "_installable": true,
+  "_location": "/aframe",
+  "_nodeVersion": "0.12.7",
+  "_npmUser": {
+    "email": "cvan@mozilla.com",
+    "name": "mozvr"
+  },
+  "_npmVersion": "2.12.1",
+  "_phantomChildren": {},
+  "_requested": {
+    "name": "aframe",
+    "raw": "aframe@^0.1.1",
+    "rawSpec": "^0.1.1",
+    "scope": null,
+    "spec": ">=0.1.1 <0.2.0",
+    "type": "range"
+  },
+  "_requiredBy": [
+    "/"
+  ],
+  "_resolved": "https://registry.npmjs.org/aframe/-/aframe-0.1.1.tgz",
+  "_shasum": "7f19f406283eacade073cd1ecda66879530bed84",
+  "_shrinkwrap": null,
+  "_spec": "aframe@^0.1.1",
+  "_where": "/Users/wli/code/webVR",
+  "browserify": {
+    "transform": [
+      [
+        "polymerize",
+        {
+          "match": ".*.html$"
+        }
+      ]
+    ]
+  },
+  "bugs": {
+    "url": "https://github.com/aframevr/aframe/issues"
+  },
+  "dependencies": {
+    "aframe-core": "^0.1.1"
+  },
+  "description": "Building blocks for the VR Web",
+  "devDependencies": {
+    "browserify": "^11.0.1",
+    "browserify-css": "^0.8.2",
+    "budo": "^7.0.2",
+    "exorcist": "^0.4.0",
+    "gh-pages": "^0.4.0",
+    "html-minifier": "^0.8.0",
+    "husky": "^0.10.1",
+    "polymerize": "^1.0.0",
+    "replace": "^0.3.0",
+    "semistandard": "^7.0.2",
+    "snazzy": "^2.0.1",
+    "uglifyjs": "^2.4.10"
+  },
+  "directories": {},
+  "dist": {
+    "shasum": "7f19f406283eacade073cd1ecda66879530bed84",
+    "tarball": "http://registry.npmjs.org/aframe/-/aframe-0.1.1.tgz"
+  },
+  "gitHead": "77528185533140eda96fe71e895e696d6cd00bca",
+  "homepage": "https://github.com/aframevr/aframe#readme",
+  "keywords": [
+    "3d",
+    "aframe",
+    "aframe-core",
+    "components",
+    "elements",
+    "three",
+    "vr",
+    "webvr"
+  ],
+  "license": "MIT",
+  "link": true,
+  "main": "index.js",
+  "maintainers": [
+    {
+      "name": "mozvr",
+      "email": "cvan@mozilla.com"
+    }
+  ],
+  "name": "aframe",
+  "optionalDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aframevr/aframe.git"
+  },
+  "scripts": {
+    "browserify": "browserify ./index.js -s 'AFRAME'",
+    "build": "mkdir -p build/ && npm run browserify -- --debug -o build/aframe.js",
+    "dev": "npm run build && node ./scripts/budo",
+    "dist": "mkdir -p dist/ && npm run browserify -s -- --debug | exorcist dist/aframe.js.map > dist/aframe.js && uglifyjs dist/aframe.js -c warnings=false -m -o dist/aframe.min.js",
+    "gh-pages": "npm run ghpages",
+    "ghpages": "node ./scripts/gh-pages",
+    "lint": "semistandard -v $(git ls-files '*.js') | snazzy",
+    "precommit": "npm run lint",
+    "preghpages": "npm run dist && rm -rf gh-pages && mkdir -p gh-pages && cp -r {.nojekyll,dist,lib,examples,index.html,style} gh-pages/. 2>/dev/null || : && git checkout dist/ && replace 'build/aframe.js' 'dist/aframe.min.js' gh-pages/ -r --silent",
+    "release:bump": "npm version patch --preminor",
+    "release:push": "npm login && npm publish && git push --follow-tags",
+    "start": "npm run dev"
+  },
+  "semistandard": {
+    "ignore": [
+      "build/**",
+      "dist/**",
+      "examples/_js/**",
+      "lib/vendor/**"
+    ]
+  },
+  "version": "0.1.1"
+}
+
+},{}],81:[function(require,module,exports){
+'use strict';
+// For more information about browser field, check out the browser field at https://github.com/substack/browserify-handbook#browser-field.
+
+module.exports = {
+    // Create a <link> tag with optional data attributes
+    createLink: function(href, attributes) {
+        var head = document.head || document.getElementsByTagName('head')[0];
+        var link = document.createElement('link');
+
+        link.href = href;
+        link.rel = 'stylesheet';
+
+        for (var key in attributes) {
+            if ( ! attributes.hasOwnProperty(key)) {
+                continue;
+            }
+            var value = attributes[key];
+            link.setAttribute('data-' + key, value);
+        }
+
+        head.appendChild(link);
+    },
+    // Create a <style> tag with optional data attributes
+    createStyle: function(cssText, attributes) {
+        var head = document.head || document.getElementsByTagName('head')[0],
+            style = document.createElement('style');
+
+        style.type = 'text/css';
+
+        for (var key in attributes) {
+            if ( ! attributes.hasOwnProperty(key)) {
+                continue;
+            }
+            var value = attributes[key];
+            style.setAttribute('data-' + key, value);
+        }
+        
+        if (style.sheet) { // for jsdom and IE9+
+            style.innerHTML = cssText;
+            style.sheet.cssText = cssText;
+            head.appendChild(style);
+        } else if (style.styleSheet) { // for IE8 and below
+            head.appendChild(style);
+            style.styleSheet.cssText = cssText;
+        } else { // for Chrome, Firefox, and Safari
+            style.appendChild(document.createTextNode(cssText));
+            head.appendChild(style);
+        }
+    }
+};
+
+},{}],82:[function(require,module,exports){
+/**
+ * Expose `requestAnimationFrame()`.
+ */
+
+exports = module.exports = window.requestAnimationFrame
+  || window.webkitRequestAnimationFrame
+  || window.mozRequestAnimationFrame
+  || fallback;
+
+/**
+ * Fallback implementation.
+ */
+
+var prev = new Date().getTime();
+function fallback(fn) {
+  var curr = new Date().getTime();
+  var ms = Math.max(0, 16 - (curr - prev));
+  var req = setTimeout(fn, ms);
+  prev = curr;
+  return req;
+}
+
+/**
+ * Cancel.
+ */
+
+var cancel = window.cancelAnimationFrame
+  || window.webkitCancelAnimationFrame
+  || window.mozCancelAnimationFrame
+  || window.clearTimeout;
+
+exports.cancel = function(id){
+  cancel.call(window, id);
+};
+
+},{}],83:[function(require,module,exports){
 
 /**
  * This is the web browser implementation of `debug()`.
@@ -9703,7 +14963,7 @@ function localstorage(){
   } catch (e) {}
 }
 
-},{"./debug":46}],46:[function(require,module,exports){
+},{"./debug":84}],84:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -9902,137 +15162,10 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":47}],47:[function(require,module,exports){
-/**
- * Helpers.
- */
-
-var s = 1000;
-var m = s * 60;
-var h = m * 60;
-var d = h * 24;
-var y = d * 365.25;
-
-/**
- * Parse or format the given `val`.
- *
- * Options:
- *
- *  - `long` verbose formatting [false]
- *
- * @param {String|Number} val
- * @param {Object} options
- * @return {String|Number}
- * @api public
- */
-
-module.exports = function(val, options){
-  options = options || {};
-  if ('string' == typeof val) return parse(val);
-  return options.long
-    ? long(val)
-    : short(val);
-};
-
-/**
- * Parse the given `str` and return milliseconds.
- *
- * @param {String} str
- * @return {Number}
- * @api private
- */
-
-function parse(str) {
-  str = '' + str;
-  if (str.length > 10000) return;
-  var match = /^((?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|years?|yrs?|y)?$/i.exec(str);
-  if (!match) return;
-  var n = parseFloat(match[1]);
-  var type = (match[2] || 'ms').toLowerCase();
-  switch (type) {
-    case 'years':
-    case 'year':
-    case 'yrs':
-    case 'yr':
-    case 'y':
-      return n * y;
-    case 'days':
-    case 'day':
-    case 'd':
-      return n * d;
-    case 'hours':
-    case 'hour':
-    case 'hrs':
-    case 'hr':
-    case 'h':
-      return n * h;
-    case 'minutes':
-    case 'minute':
-    case 'mins':
-    case 'min':
-    case 'm':
-      return n * m;
-    case 'seconds':
-    case 'second':
-    case 'secs':
-    case 'sec':
-    case 's':
-      return n * s;
-    case 'milliseconds':
-    case 'millisecond':
-    case 'msecs':
-    case 'msec':
-    case 'ms':
-      return n;
-  }
-}
-
-/**
- * Short format for `ms`.
- *
- * @param {Number} ms
- * @return {String}
- * @api private
- */
-
-function short(ms) {
-  if (ms >= d) return Math.round(ms / d) + 'd';
-  if (ms >= h) return Math.round(ms / h) + 'h';
-  if (ms >= m) return Math.round(ms / m) + 'm';
-  if (ms >= s) return Math.round(ms / s) + 's';
-  return ms + 'ms';
-}
-
-/**
- * Long format for `ms`.
- *
- * @param {Number} ms
- * @return {String}
- * @api private
- */
-
-function long(ms) {
-  return plural(ms, d, 'day')
-    || plural(ms, h, 'hour')
-    || plural(ms, m, 'minute')
-    || plural(ms, s, 'second')
-    || ms + ' ms';
-}
-
-/**
- * Pluralization helper.
- */
-
-function plural(ms, n, name) {
-  if (ms < n) return;
-  if (ms < n * 1.5) return Math.floor(ms / n) + ' ' + name;
-  return Math.ceil(ms / n) + ' ' + name + 's';
-}
-
-},{}],48:[function(require,module,exports){
+},{"ms":87}],85:[function(require,module,exports){
 /*! (C) WebReflection Mit Style License */
 (function(e,t,n,r){"use strict";function rt(e,t){for(var n=0,r=e.length;n<r;n++)vt(e[n],t)}function it(e){for(var t=0,n=e.length,r;t<n;t++)r=e[t],nt(r,b[ot(r)])}function st(e){return function(t){j(t)&&(vt(t,e),rt(t.querySelectorAll(w),e))}}function ot(e){var t=e.getAttribute("is"),n=e.nodeName.toUpperCase(),r=S.call(y,t?v+t.toUpperCase():d+n);return t&&-1<r&&!ut(n,t)?-1:r}function ut(e,t){return-1<w.indexOf(e+'[is="'+t+'"]')}function at(e){var t=e.currentTarget,n=e.attrChange,r=e.attrName,i=e.target;Q&&(!i||i===t)&&t.attributeChangedCallback&&r!=="style"&&e.prevValue!==e.newValue&&t.attributeChangedCallback(r,n===e[a]?null:e.prevValue,n===e[l]?null:e.newValue)}function ft(e){var t=st(e);return function(e){X.push(t,e.target)}}function lt(e){K&&(K=!1,e.currentTarget.removeEventListener(h,lt)),rt((e.target||t).querySelectorAll(w),e.detail===o?o:s),B&&pt()}function ct(e,t){var n=this;q.call(n,e,t),G.call(n,{target:n})}function ht(e,t){D(e,t),et?et.observe(e,z):(J&&(e.setAttribute=ct,e[i]=Z(e),e.addEventListener(p,G)),e.addEventListener(c,at)),e.createdCallback&&Q&&(e.created=!0,e.createdCallback(),e.created=!1)}function pt(){for(var e,t=0,n=F.length;t<n;t++)e=F[t],E.contains(e)||(n--,F.splice(t--,1),vt(e,o))}function dt(e){throw new Error("A "+e+" type is already registered")}function vt(e,t){var n,r=ot(e);-1<r&&(tt(e,b[r]),r=0,t===s&&!e[s]?(e[o]=!1,e[s]=!0,r=1,B&&S.call(F,e)<0&&F.push(e)):t===o&&!e[o]&&(e[s]=!1,e[o]=!0,r=1),r&&(n=e[t+"Callback"])&&n.call(e))}if(r in t)return;var i="__"+r+(Math.random()*1e5>>0),s="attached",o="detached",u="extends",a="ADDITION",f="MODIFICATION",l="REMOVAL",c="DOMAttrModified",h="DOMContentLoaded",p="DOMSubtreeModified",d="<",v="=",m=/^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/,g=["ANNOTATION-XML","COLOR-PROFILE","FONT-FACE","FONT-FACE-SRC","FONT-FACE-URI","FONT-FACE-FORMAT","FONT-FACE-NAME","MISSING-GLYPH"],y=[],b=[],w="",E=t.documentElement,S=y.indexOf||function(e){for(var t=this.length;t--&&this[t]!==e;);return t},x=n.prototype,T=x.hasOwnProperty,N=x.isPrototypeOf,C=n.defineProperty,k=n.getOwnPropertyDescriptor,L=n.getOwnPropertyNames,A=n.getPrototypeOf,O=n.setPrototypeOf,M=!!n.__proto__,_=n.create||function mt(e){return e?(mt.prototype=e,new mt):this},D=O||(M?function(e,t){return e.__proto__=t,e}:L&&k?function(){function e(e,t){for(var n,r=L(t),i=0,s=r.length;i<s;i++)n=r[i],T.call(e,n)||C(e,n,k(t,n))}return function(t,n){do e(t,n);while((n=A(n))&&!N.call(n,t));return t}}():function(e,t){for(var n in t)e[n]=t[n];return e}),P=e.MutationObserver||e.WebKitMutationObserver,H=(e.HTMLElement||e.Element||e.Node).prototype,B=!N.call(H,E),j=B?function(e){return e.nodeType===1}:function(e){return N.call(H,e)},F=B&&[],I=H.cloneNode,q=H.setAttribute,R=H.removeAttribute,U=t.createElement,z=P&&{attributes:!0,characterData:!0,attributeOldValue:!0},W=P||function(e){J=!1,E.removeEventListener(c,W)},X,V=e.requestAnimationFrame||e.webkitRequestAnimationFrame||e.mozRequestAnimationFrame||e.msRequestAnimationFrame||function(e){setTimeout(e,10)},$=!1,J=!0,K=!0,Q=!0,G,Y,Z,et,tt,nt;O||M?(tt=function(e,t){N.call(t,e)||ht(e,t)},nt=ht):(tt=function(e,t){e[i]||(e[i]=n(!0),ht(e,t))},nt=tt),B?(J=!1,function(){var e=k(H,"addEventListener"),t=e.value,n=function(e){var t=new CustomEvent(c,{bubbles:!0});t.attrName=e,t.prevValue=this.getAttribute(e),t.newValue=null,t[l]=t.attrChange=2,R.call(this,e),this.dispatchEvent(t)},r=function(e,t){var n=this.hasAttribute(e),r=n&&this.getAttribute(e),i=new CustomEvent(c,{bubbles:!0});q.call(this,e,t),i.attrName=e,i.prevValue=n?r:null,i.newValue=t,n?i[f]=i.attrChange=1:i[a]=i.attrChange=0,this.dispatchEvent(i)},s=function(e){var t=e.currentTarget,n=t[i],r=e.propertyName,s;n.hasOwnProperty(r)&&(n=n[r],s=new CustomEvent(c,{bubbles:!0}),s.attrName=n.name,s.prevValue=n.value||null,s.newValue=n.value=t[r]||null,s.prevValue==null?s[a]=s.attrChange=0:s[f]=s.attrChange=1,t.dispatchEvent(s))};e.value=function(e,o,u){e===c&&this.attributeChangedCallback&&this.setAttribute!==r&&(this[i]={className:{name:"class",value:this.className}},this.setAttribute=r,this.removeAttribute=n,t.call(this,"propertychange",s)),t.call(this,e,o,u)},C(H,"addEventListener",e)}()):P||(E.addEventListener(c,W),E.setAttribute(i,1),E.removeAttribute(i),J&&(G=function(e){var t=this,n,r,s;if(t===e.target){n=t[i],t[i]=r=Z(t);for(s in r){if(!(s in n))return Y(0,t,s,n[s],r[s],a);if(r[s]!==n[s])return Y(1,t,s,n[s],r[s],f)}for(s in n)if(!(s in r))return Y(2,t,s,n[s],r[s],l)}},Y=function(e,t,n,r,i,s){var o={attrChange:e,currentTarget:t,attrName:n,prevValue:r,newValue:i};o[s]=e,at(o)},Z=function(e){for(var t,n,r={},i=e.attributes,s=0,o=i.length;s<o;s++)t=i[s],n=t.name,n!=="setAttribute"&&(r[n]=t.value);return r})),t[r]=function(n,r){c=n.toUpperCase(),$||($=!0,P?(et=function(e,t){function n(e,t){for(var n=0,r=e.length;n<r;t(e[n++]));}return new P(function(r){for(var i,s,o,u=0,a=r.length;u<a;u++)i=r[u],i.type==="childList"?(n(i.addedNodes,e),n(i.removedNodes,t)):(s=i.target,Q&&s.attributeChangedCallback&&i.attributeName!=="style"&&(o=s.getAttribute(i.attributeName),o!==i.oldValue&&s.attributeChangedCallback(i.attributeName,i.oldValue,o)))})}(st(s),st(o)),et.observe(t,{childList:!0,subtree:!0})):(X=[],V(function E(){while(X.length)X.shift().call(null,X.shift());V(E)}),t.addEventListener("DOMNodeInserted",ft(s)),t.addEventListener("DOMNodeRemoved",ft(o))),t.addEventListener(h,lt),t.addEventListener("readystatechange",lt),t.createElement=function(e,n){var r=U.apply(t,arguments),i=""+e,s=S.call(y,(n?v:d)+(n||i).toUpperCase()),o=-1<s;return n&&(r.setAttribute("is",n=n.toLowerCase()),o&&(o=ut(i.toUpperCase(),n))),Q=!t.createElement.innerHTMLHelper,o&&nt(r,b[s]),r},H.cloneNode=function(e){var t=I.call(this,!!e),n=ot(t);return-1<n&&nt(t,b[n]),e&&it(t.querySelectorAll(w)),t}),-2<S.call(y,v+c)+S.call(y,d+c)&&dt(n);if(!m.test(c)||-1<S.call(g,c))throw new Error("The type "+n+" is invalid");var i=function(){return f?t.createElement(l,c):t.createElement(l)},a=r||x,f=T.call(a,u),l=f?r[u].toUpperCase():c,c,p;return f&&-1<S.call(y,d+l)&&dt(l),p=y.push((f?v:d)+c)-1,w=w.concat(w.length?",":"",f?l+'[is="'+n.toLowerCase()+'"]':l),i.prototype=b[p]=T.call(a,"prototype")?a.prototype:_(H),rt(t.querySelectorAll(w),s),i}})(window,document,Object,"registerElement");
-},{}],49:[function(require,module,exports){
+},{}],86:[function(require,module,exports){
 (function (process,global){
 /*!
  * @overview es6-promise - a tiny implementation of Promises/A+.
@@ -11003,7 +16136,134 @@ function plural(ms, n, name) {
 
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"_process":1}],50:[function(require,module,exports){
+},{"_process":90}],87:[function(require,module,exports){
+/**
+ * Helpers.
+ */
+
+var s = 1000;
+var m = s * 60;
+var h = m * 60;
+var d = h * 24;
+var y = d * 365.25;
+
+/**
+ * Parse or format the given `val`.
+ *
+ * Options:
+ *
+ *  - `long` verbose formatting [false]
+ *
+ * @param {String|Number} val
+ * @param {Object} options
+ * @return {String|Number}
+ * @api public
+ */
+
+module.exports = function(val, options){
+  options = options || {};
+  if ('string' == typeof val) return parse(val);
+  return options.long
+    ? long(val)
+    : short(val);
+};
+
+/**
+ * Parse the given `str` and return milliseconds.
+ *
+ * @param {String} str
+ * @return {Number}
+ * @api private
+ */
+
+function parse(str) {
+  str = '' + str;
+  if (str.length > 10000) return;
+  var match = /^((?:\d+)?\.?\d+) *(milliseconds?|msecs?|ms|seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|years?|yrs?|y)?$/i.exec(str);
+  if (!match) return;
+  var n = parseFloat(match[1]);
+  var type = (match[2] || 'ms').toLowerCase();
+  switch (type) {
+    case 'years':
+    case 'year':
+    case 'yrs':
+    case 'yr':
+    case 'y':
+      return n * y;
+    case 'days':
+    case 'day':
+    case 'd':
+      return n * d;
+    case 'hours':
+    case 'hour':
+    case 'hrs':
+    case 'hr':
+    case 'h':
+      return n * h;
+    case 'minutes':
+    case 'minute':
+    case 'mins':
+    case 'min':
+    case 'm':
+      return n * m;
+    case 'seconds':
+    case 'second':
+    case 'secs':
+    case 'sec':
+    case 's':
+      return n * s;
+    case 'milliseconds':
+    case 'millisecond':
+    case 'msecs':
+    case 'msec':
+    case 'ms':
+      return n;
+  }
+}
+
+/**
+ * Short format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function short(ms) {
+  if (ms >= d) return Math.round(ms / d) + 'd';
+  if (ms >= h) return Math.round(ms / h) + 'h';
+  if (ms >= m) return Math.round(ms / m) + 'm';
+  if (ms >= s) return Math.round(ms / s) + 's';
+  return ms + 'ms';
+}
+
+/**
+ * Long format for `ms`.
+ *
+ * @param {Number} ms
+ * @return {String}
+ * @api private
+ */
+
+function long(ms) {
+  return plural(ms, d, 'day')
+    || plural(ms, h, 'hour')
+    || plural(ms, m, 'minute')
+    || plural(ms, s, 'second')
+    || ms + ' ms';
+}
+
+/**
+ * Pluralization helper.
+ */
+
+function plural(ms, n, name) {
+  if (ms < n) return;
+  if (ms < n * 1.5) return Math.floor(ms / n) + ' ' + name;
+  return Math.ceil(ms / n) + ' ' + name + 's';
+}
+
+},{}],88:[function(require,module,exports){
 /* eslint-disable no-unused-vars */
 'use strict';
 var hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -11044,7 +16304,7 @@ module.exports = Object.assign || function (target, source) {
 	return to;
 };
 
-},{}],51:[function(require,module,exports){
+},{}],89:[function(require,module,exports){
 (function (global){
 var performance = global.performance || {};
 
@@ -11076,7 +16336,100 @@ present.conflict();
 module.exports = present;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],52:[function(require,module,exports){
+},{}],90:[function(require,module,exports){
+// shim for using process in browser
+
+var process = module.exports = {};
+var queue = [];
+var draining = false;
+var currentQueue;
+var queueIndex = -1;
+
+function cleanUpNextTick() {
+    draining = false;
+    if (currentQueue.length) {
+        queue = currentQueue.concat(queue);
+    } else {
+        queueIndex = -1;
+    }
+    if (queue.length) {
+        drainQueue();
+    }
+}
+
+function drainQueue() {
+    if (draining) {
+        return;
+    }
+    var timeout = setTimeout(cleanUpNextTick);
+    draining = true;
+
+    var len = queue.length;
+    while(len) {
+        currentQueue = queue;
+        queue = [];
+        while (++queueIndex < len) {
+            if (currentQueue) {
+                currentQueue[queueIndex].run();
+            }
+        }
+        queueIndex = -1;
+        len = queue.length;
+    }
+    currentQueue = null;
+    draining = false;
+    clearTimeout(timeout);
+}
+
+process.nextTick = function (fun) {
+    var args = new Array(arguments.length - 1);
+    if (arguments.length > 1) {
+        for (var i = 1; i < arguments.length; i++) {
+            args[i - 1] = arguments[i];
+        }
+    }
+    queue.push(new Item(fun, args));
+    if (queue.length === 1 && !draining) {
+        setTimeout(drainQueue, 0);
+    }
+};
+
+// v8 likes predictible objects
+function Item(fun, array) {
+    this.fun = fun;
+    this.array = array;
+}
+Item.prototype.run = function () {
+    this.fun.apply(null, this.array);
+};
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+process.version = ''; // empty string to avoid regexp issues
+process.versions = {};
+
+function noop() {}
+
+process.on = noop;
+process.addListener = noop;
+process.once = noop;
+process.off = noop;
+process.removeListener = noop;
+process.removeAllListeners = noop;
+process.emit = noop;
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+};
+
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+process.umask = function() { return 0; };
+
+},{}],91:[function(require,module,exports){
 'use strict';
 
 var raf = require('raf');
@@ -11106,57 +16459,7 @@ function clearInterval(data) {
   raf.cancel(data.id);
 }
 
-},{"raf":53,"time-now":54}],53:[function(require,module,exports){
-/**
- * Expose `requestAnimationFrame()`.
- */
-
-exports = module.exports = window.requestAnimationFrame
-  || window.webkitRequestAnimationFrame
-  || window.mozRequestAnimationFrame
-  || fallback;
-
-/**
- * Fallback implementation.
- */
-
-var prev = new Date().getTime();
-function fallback(fn) {
-  var curr = new Date().getTime();
-  var ms = Math.max(0, 16 - (curr - prev));
-  var req = setTimeout(fn, ms);
-  prev = curr;
-  return req;
-}
-
-/**
- * Cancel.
- */
-
-var cancel = window.cancelAnimationFrame
-  || window.webkitCancelAnimationFrame
-  || window.mozCancelAnimationFrame
-  || window.clearTimeout;
-
-exports.cancel = function(id){
-  cancel.call(window, id);
-};
-
-},{}],54:[function(require,module,exports){
-'use strict';
-
-module.exports = (function() {
-  var perf = window && window.performance;
-  if (perf && perf.now) {
-    return perf.now.bind(perf);
-  } else {
-    return function() {
-      return new Date().getTime();
-    };
-  }
-}());
-
-},{}],55:[function(require,module,exports){
+},{"raf":82,"time-now":94}],92:[function(require,module,exports){
 /*
 
 style-attr
@@ -11230,7 +16533,7 @@ module.exports.parse = parse;
 module.exports.stringify = stringify;
 module.exports.normalize = normalize;
 
-},{}],56:[function(require,module,exports){
+},{}],93:[function(require,module,exports){
 // File:src/Three.js
 
 /**
@@ -50619,7 +55922,21 @@ THREE.MorphBlendMesh.prototype.update = function ( delta ) {
 };
 
 
-},{}],57:[function(require,module,exports){
+},{}],94:[function(require,module,exports){
+'use strict';
+
+module.exports = (function() {
+  var perf = window && window.performance;
+  if (perf && perf.now) {
+    return perf.now.bind(perf);
+  } else {
+    return function() {
+      return new Date().getTime();
+    };
+  }
+}());
+
+},{}],95:[function(require,module,exports){
 /**
  * Tween.js - Licensed under the MIT license
  * https://github.com/sole/tween.js
@@ -51412,7 +56729,7 @@ TWEEN.Interpolation = {
 
 } )( this );
 
-},{}],58:[function(require,module,exports){
+},{}],96:[function(require,module,exports){
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
 /*
  * Copyright 2015 Google Inc. All Rights Reserved.
@@ -54663,5273 +59980,4 @@ module.exports = WebVRPolyfill;
 
 },{"./base.js":1,"./cardboard-hmd-vr-device.js":2,"./fusion-position-sensor-vr-device.js":4,"./mouse-keyboard-position-sensor-vr-device.js":6}]},{},[5]);
 
-},{}],59:[function(require,module,exports){
-module.exports={
-  "name": "aframe-core",
-  "version": "0.1.3",
-  "homepage": "https://github.com/aframevr/aframe-core",
-  "license": "MIT",
-  "main": "src/index.js",
-  "dependencies": {
-    "debug": "^2.2.0",
-    "document-register-element": "^0.5.2",
-    "es6-promise": "^3.0.2",
-    "object-assign": "^4.0.1",
-    "present": "0.0.6",
-    "request-interval": "^1.0.0",
-    "style-attr": "^1.0.1",
-    "three-dev": "0.74.0-beta3",
-    "tween.js": "^15.0.0",
-    "webvr-polyfill": "github:borismus/webvr-polyfill#3f47796"
-  },
-  "devDependencies": {
-    "browserify": "^11.0.1",
-    "browserify-css": "^0.8.2",
-    "budo": "^7.0.2",
-    "chai-shallow-deep-equal": "^1.3.0",
-    "exorcist": "^0.4.0",
-    "gh-pages": "^0.4.0",
-    "husky": "^0.10.1",
-    "karma": "^0.13.15",
-    "karma-browserify": "^4.4.0",
-    "karma-chai-shallow-deep-equal": "0.0.4",
-    "karma-env-preprocessor": "^0.1.1",
-    "karma-firefox-launcher": "^0.1.6",
-    "karma-mocha": "^0.2.0",
-    "karma-mocha-reporter": "^1.1.0",
-    "karma-sinon-chai": "^1.1.0",
-    "mocha": "^2.3.3",
-    "mozilla-download": "^1.0.5",
-    "replace": "^0.3.0",
-    "semistandard": "^7.0.2",
-    "snazzy": "^2.0.1",
-    "uglifyjs": "^2.4.10"
-  },
-  "scripts": {
-    "start": "npm run dev",
-    "dev": "npm run build && budo src/index.js:build/aframe-core.js --debug --verbose --port 9001 --onupdate 'semistandard -v $(git ls-files \"*.js\") | snazzy' -- ./src/index.js -s 'aframe-core'",
-    "browserify": "browserify ./src/index.js -s 'aframe-core'",
-    "build": "mkdir -p build/ && npm run browserify -- --debug -o build/aframe-core.js",
-    "dist": "rm -rf dist/ && mkdir -p dist/ && npm run dist:js",
-    "dist:js": "npm run browserify -s -- --debug | exorcist dist/aframe-core.js.map > dist/aframe-core.js && uglifyjs dist/aframe-core.js -c warnings=false -m -o dist/aframe-core.min.js",
-    "preghpages": "npm run dist && rm -rf gh-pages && mkdir -p gh-pages && cp -r {.nojekyll,dist,lib,examples,style,index.html} gh-pages/. && git checkout dist/ && replace 'build/aframe-core.js' 'dist/aframe-core.min.js' gh-pages/ -r --silent",
-    "ghpages": "node ./scripts/gh-pages",
-    "gh-pages": "npm run ghpages",
-    "release:bump": "npm run dist && git commit -am 'bump dist' && npm version patch --preminor",
-    "release:push": "npm login && npm publish && git push --follow-tags",
-    "test": "karma start ./tests/karma.conf.js",
-    "test:ci": "TEST_ENV=ci karma start ./tests/karma.conf.js --single-run",
-    "lint": "semistandard -v $(git ls-files '*.js') | snazzy",
-    "precommit": "npm run lint"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/aframevr/aframe-core.git"
-  },
-  "bugs": {
-    "url": "https://github.com/aframevr/aframe-core/issues"
-  },
-  "semistandard": {
-    "ignore": [
-      "dist/**",
-      "examples/_js/**",
-      "lib/vendor/**",
-      "src/shaders/**"
-    ]
-  },
-  "browserify": {
-    "transform": [
-      "browserify-css"
-    ]
-  },
-  "browserify-css": {
-    "minify": true
-  },
-  "engines": {
-    "node": ">= 0.12.7",
-    "npm": ">= 2.12.1"
-  },
-  "gitHead": "66ba45b36d4168e4e21710a4401cb4e7139e6a16",
-  "description": "A DOM-based [Entity-Component System](https://en.wikipedia.org/wiki/Entity_component_system) to declaratively create 3D and VR worlds in the browser.",
-  "_id": "aframe-core@0.1.3",
-  "_shasum": "f9f53f7f9abec6c0b1b79572229b7885ea83a49e",
-  "_from": "aframe-core@>=0.1.1 <0.2.0",
-  "_npmVersion": "2.12.1",
-  "_nodeVersion": "0.12.7",
-  "_npmUser": {
-    "name": "mozvr",
-    "email": "cvan@mozilla.com"
-  },
-  "dist": {
-    "shasum": "f9f53f7f9abec6c0b1b79572229b7885ea83a49e",
-    "tarball": "http://registry.npmjs.org/aframe-core/-/aframe-core-0.1.3.tgz"
-  },
-  "maintainers": [
-    {
-      "name": "mozvr",
-      "email": "cvan@mozilla.com"
-    }
-  ],
-  "directories": {},
-  "_resolved": "https://registry.npmjs.org/aframe-core/-/aframe-core-0.1.3.tgz",
-  "readme": "ERROR: No README data found!"
-}
-
-},{}],60:[function(require,module,exports){
-var registerComponent = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-
-module.exports.Component = registerComponent('camera', {
-  schema: {
-    far: { default: 10000 },
-    fov: { default: 80, min: 0 },
-    near: { default: 0.5, min: 0 }
-  },
-
-  /**
-   * Initializes three.js camera, adding it to the entity.
-   * Adds a reference from the scene to this entity as the camera.
-   */
-  init: function () {
-    var camera = this.camera = new THREE.PerspectiveCamera();
-    var el = this.el;
-    el.object3D.add(camera);
-    el.sceneEl.cameraEl = el;
-  },
-
-  /**
-   * Updates three.js camera.
-   */
-  update: function () {
-    var data = this.data;
-    var camera = this.camera;
-    camera.aspect = data.aspect || (window.innerWidth / window.innerHeight);
-    camera.far = data.far;
-    camera.fov = data.fov;
-    camera.near = data.near;
-    camera.updateProjectionMatrix();
-  }
-});
-
-},{"../../lib/three":36,"../core/component":86}],61:[function(require,module,exports){
-var registerComponent = require('../core/component').registerComponent;
-var utils = require('../utils/');
-
-module.exports.Component = registerComponent('cursor', {
-  schema: {
-    timeout: { default: 1500, min: 0 },
-    maxDistance: { default: 5, min: 0 },
-    fuse: { default: false }
-  },
-
-  dependencies: [ 'raycaster' ],
-
-  init: function () {
-    this.raycaster = this.el.components.raycaster;
-    // The cursor defaults to fuse in mobile environments
-    this.schema.fuse.default = utils.isMobile();
-    this.attachEventListeners();
-  },
-
-  attachEventListeners: function () {
-    var el = this.el;
-    var canvas = el.sceneEl.canvas;
-
-    canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
-    canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
-
-    el.addEventListener('intersection', this.onIntersection.bind(this));
-    el.addEventListener('intersectioncleared', this.onIntersectionCleared.bind(this));
-  },
-
-  onMouseDown: function (evt) {
-    this.emit('mousedown');
-    this.mouseDownEl = this.intersectedEl;
-  },
-
-  onMouseUp: function () {
-    this.emit('mouseup');
-    if (this.data.fuse) { return; }
-    if (!this.intersectedEl) { return; }
-    if (this.mouseDownEl === this.intersectedEl) {
-      this.emit('click');
-    }
-  },
-
-  emit: function (evt) {
-    var intersectedEl = this.intersectedEl;
-    this.el.emit(evt);
-    if (intersectedEl) { intersectedEl.emit(evt); }
-  },
-
-  emitter: function (evt) {
-    return function () {
-      this.emit(evt);
-    }.bind(this);
-  },
-
-  onIntersection: function (evt) {
-    var self = this;
-    var data = this.data;
-    var el = evt.detail.el;
-    var distance = evt.detail.distance;
-    if (this.intersectedEl === el) { return; }
-    if (distance >= this.data.maxDistance) { return; }
-    this.intersectedEl = el;
-    el.addState('hovered');
-    el.emit('mouseenter');
-    this.el.addState('hovering');
-    if (data.timeout === 0) { return; }
-    if (!data.fuse) { return; }
-    this.el.addState('fusing');
-    this.fuseTimeout = setTimeout(fuse, data.timeout);
-    function fuse () {
-      self.el.removeState('fusing');
-      self.emit('click');
-    }
-  },
-
-  onIntersectionCleared: function (evt) {
-    var el = evt.detail.el;
-    if (!el || !this.intersectedEl) { return; }
-    this.intersectedEl = null;
-    el.removeState('hovered');
-    el.emit('mouseleave');
-    this.el.removeState('hovering');
-    this.el.removeState('fusing');
-    clearTimeout(this.fuseTimeout);
-  }
-});
-
-},{"../core/component":86,"../utils/":91}],62:[function(require,module,exports){
-var register = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-var debug = require('../utils/debug');
-
-var warn = debug('components:fog:warn');
-
-/**
- * Fog component.
- * Applies only to the scene entity.
- */
-module.exports.Component = register('fog', {
-  schema: {
-    color: { default: '#000' },
-    density: { default: 0.00025 },
-    far: { default: 1000, min: 0 },
-    near: { default: 1, min: 0 },
-    type: { default: 'linear', oneOf: ['linear', 'exponential'] }
-  },
-
-  update: function () {
-    var data = this.data;
-    var el = this.el;
-    var fog = this.el.object3D.fog;
-
-    if (!el.isScene) {
-      warn('Fog component can only be applied to <a-scene>');
-      return;
-    }
-
-    // (Re)create fog if fog doesn't exist or fog type changed.
-    if (!fog || data.type !== fog.name) {
-      el.object3D.fog = getFog(data);
-      el.updateMaterials();
-      return;
-    }
-
-    // Fog data changed. Update fog.
-    Object.keys(this.schema).forEach(function (key) {
-      var value = data[key];
-      if (key === 'color') { value = new THREE.Color(value); }
-      fog[key] = value;
-    });
-  },
-
-  /**
-   * Remove fog on remove (callback).
-   */
-  remove: function () {
-    var fog = this.el.object3D.fog;
-    if (fog) {
-      fog.density = 0;
-      fog.far = 0;
-      fog.near = 0;
-    }
-  }
-});
-
-/**
- * Creates a fog object. Sets fog.name to be able to detect fog type changes.
- *
- * @param {object} data - Fog data.
- * @returns {object} fog
- */
-function getFog (data) {
-  var fog;
-  if (data.type === 'exponential') {
-    fog = new THREE.FogExp2(data.color, data.density);
-  } else {
-    fog = new THREE.Fog(data.color, data.near, data.far);
-  }
-  fog.name = data.type;
-  return fog;
-}
-
-},{"../../lib/three":36,"../core/component":86,"../utils/debug":90}],63:[function(require,module,exports){
-var debug = require('../utils/debug');
-var registerComponent = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-var utils = require('../utils');
-
-var DEFAULT_RADIUS = 1;
-var helperMatrix = new THREE.Matrix4();
-var rad = THREE.Math.degToRad;
-var warn = debug('components:geometry:warn');
-
-/**
- * Geometry component. Combined with material component to make a mesh in 3D object.
- *
- * @param {number} [arc=360] -
- *   Used by torus. A central angle that determines arc length of the torus. In degrees.
- * @param {number} [depth=2] - Used by box. Depth of the sides on the Z axis.
- * @param {number} [height=2] -
- *   Used by box, cylinder, plane. Height of the sides on the Y axis.
- * @param {bool} [openEnded=false] - Used by cylinder.
- * @param {number} [p=2] - Used by torusKnot. Coprime of q.
- * @param {number} [primitive=null] - type of shape (e.g., box, sphere).
- * @param {number} [q=3] - Used by torusKnot. Coprime of p.
- * @param {number} [radius=1] - Used by circle, cylinder, ring, sphere, torus, torusKnot.
- * @param {number} [radiusBottom=1] - Used by cylinder.
- * @param {number} [radiusInner=0.8] - Used by ring.
- * @param {number} [radiusOuter=1.2] - Used by ring.
- * @param {number} [radiusTop=1] - Used by cylinder.
- * @param {number} [radiusTube=0.2] - Used by torus. Tube radius.
- * @param {number} [scaleHeight=1] - Used by torusKnot.
- * @param {number} [segments=8] - Used by circle. Number of segments.
- * @param {number} [segmentsHeight=18] - Used by cylinder, sphere. Number of segments.
- * @param {number} [segmentsPhi=8] - Used by ring.
- * @param {number} [segmentsRadial=36] - Used by cylinder. Number of segments.
- * @param {number} [segmentsTheta=8] -
- *   Used by ring. Number of segments. A higher number means the ring will be more round.
- *   Minimum is 3.
- * @param {number} [segmentsTubular=8] - Used by torus, torusKnot. Number of segments.
- * @param {number} [segmentsWidth=36] - Used by sphere.
- * @param {number} [thetaLength=360] - Used by circle, cylinder, ring. In degrees.
- * @param {number} [thetaStart=0] - Used by circle, cylinder, ring. In degrees.
- * @param {string} translate -
- *   Defined as a coordinate (e.g., `-1 0 5`) that translates geometry vertices. Useful for
- *   effectively changing the pivot point.
- * @param {number} [width=2] - Used by box, plane.
- */
-module.exports.Component = registerComponent('geometry', {
-  schema: {
-    arc: { default: 360, if: { primitive: ['torus'] } },
-    depth: { default: 2, min: 0, if: { primitive: ['box'] } },
-    height: { default: 2, min: 0, if: { primitive: ['box', 'plane'] } },
-    openEnded: { default: false, if: { primitive: ['cylinder'] } },
-    p: { default: 2, if: { primitive: ['torusKnot'] } },
-    translate: { default: { x: 0, y: 0, z: 0 } },
-    primitive: {
-      default: '',
-      oneOf: ['', 'box', 'circle', 'cylinder', 'plane',
-              'ring', 'sphere', 'torus', 'torusKnot'] },
-    q: { default: 3, if: { primitive: ['torusKnot'] } },
-    radius: { default: DEFAULT_RADIUS, min: 0, if: { primitive: ['circle', 'cylinder', 'sphere', 'torus', 'torusKnot'] } },
-    radiusBottom: { default: DEFAULT_RADIUS, min: 0, if: { primitive: ['cylinder'] } },
-    radiusInner: { default: 0.8, min: 0, if: { primitive: ['ring'] } },
-    radiusOuter: { default: 1.2, min: 0, if: { primitive: ['ring'] } },
-    radiusTop: { default: DEFAULT_RADIUS, if: { primitive: ['cylinder'] } },
-    radiusTubular: { default: 0.2, min: 0, if: { primitive: ['torus'] } },
-    scaleHeight: { default: 1, min: 0, if: { primitive: ['torusKnot'] } },
-    segments: { default: 8, min: 0, if: { primitive: ['circle'] } },
-    segmentsHeight: { default: 18, min: 0, if: { primitive: ['cylinder', 'sphere'] } },
-    segmentsPhi: { default: 8, min: 0, if: { primitive: ['ring'] } },
-    segmentsRadial: { default: 36, min: 0, if: { primitive: ['cylinder'] } },
-    segmentsTheta: { default: 8, min: 0, if: { primitive: ['ring'] } },
-    segmentsTubular: { default: 8, min: 0, if: { primitive: ['torus', 'torusKnot'] } },
-    segmentsWidth: { default: 36, min: 0, if: { primitive: ['sphere'] } },
-    thetaLength: { default: 360, min: 0, if: { primitive: ['circle', 'cylinder', 'ring'] } },
-    thetaStart: { default: 0, if: { primitive: ['circle', 'cylinder', 'ring'] } },
-    width: { default: 2, min: 0, if: { primitive: ['box', 'plane'] } }
-  },
-
-  /**
-   * Creates a new geometry on every update as there's not an easy way to
-   * update a geometry that would be faster than just creating a new one.
-   */
-  update: function (previousData) {
-    previousData = previousData || {};
-    var data = this.data;
-    var currentTranslate = previousData.translate || this.schema.translate.default;
-    var diff = utils.diff(previousData, data);
-    var geometry = this.el.object3D.geometry;
-    var geometryNeedsUpdate = !(Object.keys(diff).length === 1 && 'translate' in diff);
-    var translateNeedsUpdate = !utils.deepEqual(data.translate, currentTranslate);
-
-    if (geometryNeedsUpdate) {
-      geometry = this.el.object3D.geometry = getGeometry(this.data, this.schema);
-    }
-    if (translateNeedsUpdate) {
-      applyTranslate(geometry, data.translate, currentTranslate);
-    }
-  },
-
-  /**
-   * Removes geometry on remove (callback).
-   */
-  remove: function () {
-    this.el.object3D.geometry = new THREE.Geometry();
-  }
-});
-
-/**
- * Creates a three.js geometry.
- *
- * @param {object} data
- * @param {object} schema
- * @returns {object} geometry
- */
-function getGeometry (data, schema) {
-  switch (data.primitive) {
-    case 'box': {
-      return new THREE.BoxGeometry(data.width, data.height, data.depth);
-    }
-    case 'circle': {
-      return new THREE.CircleGeometry(
-        data.radius, data.segments, rad(data.thetaStart), rad(data.thetaLength));
-    }
-    case 'cone': {
-      return new THREE.CylinderGeometry(
-        data.radiusTop, data.radiusBottom, data.height,
-        data.segmentsRadial, data.segmentsHeight,
-        data.openEnded, rad(data.thetaStart), rad(data.thetaLength));
-    }
-    case 'cylinder': {
-      return new THREE.CylinderGeometry(
-        data.radius, data.radius, data.height,
-        data.segmentsRadial, data.segmentsHeight,
-        data.openEnded, rad(data.thetaStart), rad(data.thetaLength));
-    }
-    case 'plane': {
-      return new THREE.PlaneBufferGeometry(data.width, data.height);
-    }
-    case 'ring': {
-      return new THREE.RingGeometry(
-        data.radiusInner, data.radiusOuter, data.segmentsTheta, data.segmentsPhi,
-        rad(data.thetaStart), rad(data.thetaLength));
-    }
-    case 'sphere': {
-      return new THREE.SphereGeometry(
-        data.radius, data.segmentsWidth, data.segmentsHeight);
-    }
-    case 'torus': {
-      return new THREE.TorusGeometry(
-        data.radius, data.radiusTubular * 2, data.segmentsRadial, data.segmentsTubular,
-        rad(data.arc));
-    }
-    case 'torusKnot': {
-      return new THREE.TorusKnotGeometry(
-        data.radius, data.radiusTubular * 2, data.segmentsRadial, data.segmentsTubular,
-        data.p, data.q, data.scaleHeight);
-    }
-    default: {
-      warn('Primitive type not supported: ' + data.primitive);
-      return new THREE.Geometry();
-    }
-  }
-}
-
-/**
- * Translates geometry vertices.
- *
- * @param {object} geometry - three.js geometry.
- * @param {object} translate - New translation.
- * @param {object} currentTranslate - Currently applied translation.
- */
-function applyTranslate (geometry, translate, currentTranslate) {
-  var translation = helperMatrix.makeTranslation(
-    translate.x - currentTranslate.x,
-    translate.y - currentTranslate.y,
-    translate.z - currentTranslate.z
-  );
-  geometry.applyMatrix(translation);
-  geometry.verticesNeedsUpdate = true;
-}
-
-},{"../../lib/three":36,"../core/component":86,"../utils":91,"../utils/debug":90}],64:[function(require,module,exports){
-require('../components/camera');
-require('../components/cursor');
-require('../components/fog');
-require('../components/geometry');
-require('../components/light');
-require('../components/loader');
-require('../components/look-at');
-require('../components/look-controls');
-require('../components/material');
-require('../components/position');
-require('../components/raycaster');
-require('../components/rotation');
-require('../components/scale');
-require('../components/sound');
-require('../components/visible');
-require('../components/wasd-controls');
-
-},{"../components/camera":60,"../components/cursor":61,"../components/fog":62,"../components/geometry":63,"../components/light":65,"../components/loader":66,"../components/look-at":67,"../components/look-controls":68,"../components/material":69,"../components/position":70,"../components/raycaster":71,"../components/rotation":72,"../components/scale":73,"../components/sound":74,"../components/visible":75,"../components/wasd-controls":76}],65:[function(require,module,exports){
-var diff = require('../utils').diff;
-var debug = require('../utils/debug');
-var registerComponent = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-
-var rad = THREE.Math.degToRad;
-var warn = debug('components:light:warn');
-
-/**
- * Light component.
- *
- * @namespace light
- * @param {number} [angle=60] - maximum extent of light from its direction,
-          in degrees. For spot lights.
- * @param {string} [color=#FFF] - light color. For every light.
- * @param {number} [decay=1] - amount the light dims along the distance of the
-          light. For point and spot lights.
- * @param {number} [exponent=10.0] - rapidity of falloff of light from its
-          target direction. For spot lights.
- * @param {string} [groundColor=#FFF] - ground light color. For hemisphere
-          lights.
- * @param {number} [intensity=1.0] - light strength. For every light except
-          ambient.
- * @param {string} [type=directional] - light type (ambient, directional,
-          hemisphere, point, spot).
- */
-module.exports.Component = registerComponent('light', {
-  schema: {
-    angle: { default: 60, if: { type: ['spot'] } },
-    color: { default: '#FFF' },
-    groundColor: { default: '#FFF', if: { type: ['hemisphere'] } },
-    decay: { default: 1, if: { type: ['point', 'spot'] } },
-    distance: { default: 0.0, min: 0, if: { type: ['point', 'spot'] } },
-    exponent: { default: 10.0, if: { type: ['spot'] } },
-    intensity: { default: 1.0, min: 0, if: { type: ['directional', 'hemisphere', 'point', 'spot'] } },
-    type: { default: 'directional',
-            oneOf: ['ambient', 'directional', 'hemisphere', 'point', 'spot']
-    }
-  },
-
-  /**
-   * Notifies scene a light has been added to remove default lighting.
-   */
-  init: function () {
-    var el = this.el;
-    this.light = null;
-    el.sceneEl.registerLight(el);
-  },
-
-  /**
-   * (Re)create or update light.
-   */
-  update: function (oldData) {
-    var data = this.data;
-    var diffData = diff(data, oldData || {});
-    var el = this.el;
-    var light = this.light;
-
-    // Existing light.
-    if (light) {
-      // Light type has changed. Recreate light.
-      if ('type' in diffData) {
-        var newLight = getLight(data);
-        if (newLight) {
-          el.object3D.remove(light);
-          el.object3D.add(newLight);
-          this.light = newLight;
-        }
-        return;
-      }
-      // Light type has not changed. Update light.
-      Object.keys(diffData).forEach(function (key) {
-        var value = data[key];
-        if (['color', 'groundColor'].indexOf(key) !== -1) {
-          value = new THREE.Color(value);
-        }
-        light[key] = value;
-      });
-      return;
-    }
-
-    // No light yet. Create and add light.
-    this.light = getLight(data);
-    if (this.light) {
-      el.object3D.add(this.light);
-    }
-  },
-
-  /**
-   * Remove light on remove (callback).
-   */
-  remove: function () {
-    if (this.light) { this.el.object3D.remove(this.light); }
-  }
-});
-
-/**
- * Creates a new three.js light object given data object defining the light.
- *
- * @param {object} data
- */
-function getLight (data) {
-  var angle = data.angle;
-  var color = new THREE.Color(data.color).getHex();
-  var decay = data.decay;
-  var distance = data.distance;
-  var groundColor = new THREE.Color(data.groundColor).getHex();
-  var intensity = data.intensity;
-  var type = data.type;
-
-  switch (type.toLowerCase()) {
-    case 'ambient': {
-      return new THREE.AmbientLight(color);
-    }
-    case 'directional': {
-      return new THREE.DirectionalLight(color, intensity);
-    }
-    case 'hemisphere': {
-      return new THREE.HemisphereLight(color, groundColor, intensity);
-    }
-    case 'point': {
-      return new THREE.PointLight(color, intensity, distance, decay);
-    }
-    case 'spot': {
-      return new THREE.SpotLight(color, intensity, distance, rad(angle), data.exponent,
-                                 decay);
-    }
-    default: {
-      warn('%s is not a valid light type. ' +
-           'Choose from ambient, directional, hemisphere, point, spot.', type);
-    }
-  }
-}
-
-},{"../../lib/three":36,"../core/component":86,"../utils":91,"../utils/debug":90}],66:[function(require,module,exports){
-var debug = require('../utils/debug');
-var registerComponent = require('../core/component').registerComponent;
-var parseUrl = require('../utils/src-loader').parseUrl;
-var THREE = require('../../lib/three');
-
-var warn = debug('components:loader:warn');
-
-module.exports.Component = registerComponent('loader', {
-  dependencies: [ 'material' ],
-
-  schema: {
-    src: { default: '' },
-    format: {
-      default: 'obj',
-      oneOf: ['obj', 'collada']
-    }
-  },
-
-  update: function () {
-    var el = this.el;
-    var data = this.data;
-    var model = this.model;
-    var url = parseUrl(data.src);
-    var format = data.format;
-    if (model) { el.object3D.remove(model); }
-    if (!url) {
-      warn('Model URL not provided');
-      return;
-    }
-    switch (format) {
-      case 'obj':
-        this.loadObj(url);
-        break;
-      case 'collada':
-        this.loadCollada(url);
-        break;
-      default:
-        warn('Model format not supported');
-    }
-  },
-
-  loadObj: function (url) {
-    var self = this;
-    var el = this.el;
-    var loader = new THREE.OBJLoader();
-    loader.load(url, function (object) {
-      self.model = object;
-      self.applyMaterial();
-      el.object3D.add(object);
-    });
-  },
-
-  applyMaterial: function () {
-    var material = this.el.components.material.material;
-    if (!this.model) { return; }
-    this.model.traverse(function (child) {
-      if (child instanceof THREE.Mesh) {
-        child.material = material;
-      }
-    });
-  },
-
-  loadCollada: function (url) {
-    var self = this;
-    var el = this.el;
-    var loader = new THREE.ColladaLoader();
-    loader.options.convertUpAxis = true;
-    loader.load(url, function (collada) {
-      self.model = collada.scene;
-      el.object3D.add(collada.scene);
-    });
-  }
-});
-
-},{"../../lib/three":36,"../core/component":86,"../utils/debug":90,"../utils/src-loader":92}],67:[function(require,module,exports){
-var debug = require('../utils/debug');
-var coordinates = require('../utils/coordinates');
-var registerComponent = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-
-var warn = debug('components:look-at:warn');
-var isCoordinate = coordinates.isCoordinate;
-
-/**
- * Look-at component.
- * Modifies rotation to either track another entity OR do a one-time turn towards a position
- * vector.
- *
- * If tracking an object via setting the component value via a selector, look-at will register
- * a behavior to the scene to update rotation on every tick.
- *
- * Examples:
- *
- * look-at="#the-mirror"
- * look-at="0 5 -2"
- *
- * @param Look-at either takes a target selector pointing to another object or a
- *        position.
- * @member {object} target3D - object3D of targeted element that look-at is currently
-           tracking.
- * @member {object} vector - Helper vector to do matrix transformations.
- */
-module.exports.Component = registerComponent('look-at', {
-  init: function () {
-    this.target3D = null;
-    this.vector = new THREE.Vector3();
-  },
-
-  /**
-   * If tracking an object, this will be called on every tick.
-   * If looking at a position vector, this will only be called once (until further updates).
-   */
-  update: function () {
-    var self = this;
-    var data = self.data;
-    var position = data.position;
-    var object3D = self.el.object3D;
-    var target3D = self.target3D;
-    var targetEl;
-    var targetSelector = data.targetSelector;
-
-    // Track target object position. Depends on parent object keeping global transforms up
-    // to state with updateMatrixWorld(). In practice, this is handled by the renderer.
-    if (target3D) {
-      return object3D.lookAt(self.vector.setFromMatrixPosition(target3D.matrixWorld));
-    }
-
-    // Query for the element, grab its object3D, then register a behavior on the scene to
-    // track the target on every tick.
-    if (targetSelector) {
-      targetEl = document.querySelector(targetSelector);
-      if (!targetEl) {
-        warn('"' + targetSelector + '" does not point to a valid entity to look-at');
-        return;
-      }
-      if (!targetEl.object3D) {
-        return targetEl.addEventListener('loaded', function () {
-          self.beginTracking(targetEl);
-        });
-      }
-      return self.beginTracking(targetEl);
-    }
-
-    // Look at a position.
-    if (position) {
-      object3D.lookAt(new THREE.Vector3(position.x, position.y, position.z));
-      return;
-    }
-
-    // No longer looking at anything (i.e., look-at="").
-    if (!position && !targetSelector) { return self.remove(); }
-  },
-
-  /**
-   * Remove follow behavior on remove (callback).
-   */
-  remove: function () {
-    this.el.sceneEl.removeBehavior(this);
-  },
-
-  beginTracking: function (targetEl) {
-    this.target3D = targetEl.object3D;
-    this.el.sceneEl.addBehavior(this);
-  },
-
-  /**
-   * Determine whether attribute value is a target selector or a position.
-   * Parse the attribute value if it is a position.
-   *
-   * @param {string} value - HTML attribute of component.
-   * @returns {object}
-   */
-  parse: function (value) {
-    if (!value) {
-      return {
-        position: null,
-        targetSelector: null
-      };
-    }
-    // Check if value is a position. Need to match digits since a target selector could have
-    // three values as well (e.g., look-at="#el .el .box").
-    if (isCoordinate(value)) {
-      return {
-        position: coordinates.parse(value),
-        targetSelector: null
-      };
-    }
-    return {
-      position: null,
-      targetSelector: value
-    };
-  },
-
-  stringify: coordinates.componentMixin.stringify
-});
-
-},{"../../lib/three":36,"../core/component":86,"../utils/coordinates":89,"../utils/debug":90}],68:[function(require,module,exports){
-var registerComponent = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-
-// To avoid recalculation at every mouse movement tick
-var PI_2 = Math.PI / 2;
-
-module.exports.Component = registerComponent('look-controls', {
-  dependencies: ['position', 'rotation'],
-
-  schema: {
-    enabled: { default: true }
-  },
-
-  init: function () {
-    var scene = this.el.sceneEl;
-    this.setupMouseControls();
-    this.setupHMDControls();
-    this.attachEventListeners();
-    scene.addBehavior(this);
-    this.previousPosition = new THREE.Vector3();
-    this.deltaPosition = new THREE.Vector3();
-  },
-
-  setupMouseControls: function () {
-    this.canvasEl = document.querySelector('a-scene').canvas;
-    // The canvas where the scene is painted
-    this.mouseDown = false;
-    this.pitchObject = new THREE.Object3D();
-    this.yawObject = new THREE.Object3D();
-    this.yawObject.position.y = 10;
-    this.yawObject.add(this.pitchObject);
-  },
-
-  setupHMDControls: function () {
-    this.dolly = new THREE.Object3D();
-    this.euler = new THREE.Euler();
-    this.controls = new THREE.VRControls(this.dolly);
-    this.zeroQuaternion = new THREE.Quaternion();
-  },
-
-  attachEventListeners: function () {
-    var canvasEl = document.querySelector('a-scene').canvas;
-
-    // Mouse Events
-    canvasEl.addEventListener('mousedown', this.onMouseDown.bind(this), true);
-    canvasEl.addEventListener('mousemove', this.onMouseMove.bind(this), true);
-    canvasEl.addEventListener('mouseup', this.releaseMouse.bind(this), true);
-    canvasEl.addEventListener('mouseout', this.releaseMouse.bind(this), true);
-
-    // Touch events
-    canvasEl.addEventListener('touchstart', this.onTouchStart.bind(this));
-    canvasEl.addEventListener('touchmove', this.onTouchMove.bind(this));
-    canvasEl.addEventListener('touchend', this.onTouchEnd.bind(this));
-  },
-
-  update: function () {
-    if (!this.data.enabled) { return; }
-    this.controls.update();
-    this.updateOrientation();
-    this.updatePosition();
-  },
-
-  updateOrientation: (function () {
-    var hmdEuler = new THREE.Euler();
-    hmdEuler.order = 'YXZ';
-    return function () {
-      var pitchObject = this.pitchObject;
-      var yawObject = this.yawObject;
-      var hmdQuaternion = this.calculateHMDQuaternion();
-      hmdEuler.setFromQuaternion(hmdQuaternion);
-      this.el.setAttribute('rotation', {
-        x: THREE.Math.radToDeg(hmdEuler.x) + THREE.Math.radToDeg(pitchObject.rotation.x),
-        y: THREE.Math.radToDeg(hmdEuler.y) + THREE.Math.radToDeg(yawObject.rotation.y),
-        z: THREE.Math.radToDeg(hmdEuler.z)
-      });
-    };
-  })(),
-
-  calculateHMDQuaternion: (function () {
-    var hmdQuaternion = new THREE.Quaternion();
-    return function () {
-      var dolly = this.dolly;
-      if (!this.zeroed && !dolly.quaternion.equals(this.zeroQuaternion)) {
-        this.zeroOrientation();
-        this.zeroed = true;
-      }
-      hmdQuaternion.copy(this.zeroQuaternion).multiply(dolly.quaternion);
-      return hmdQuaternion;
-    };
-  })(),
-
-  updatePosition: (function () {
-    var position = new THREE.Vector3();
-    var quaternion = new THREE.Quaternion();
-    var scale = new THREE.Vector3();
-    return function () {
-      var el = this.el;
-      var deltaPosition = this.calculateDeltaPosition();
-      var currentPosition = el.getComputedAttribute('position');
-      this.el.object3D.matrixWorld.decompose(position, quaternion, scale);
-      deltaPosition.applyQuaternion(quaternion);
-      el.setAttribute('position', {
-        x: currentPosition.x + deltaPosition.x,
-        y: currentPosition.y + deltaPosition.y,
-        z: currentPosition.z + deltaPosition.z
-      });
-    };
-  })(),
-
-  calculateDeltaPosition: function () {
-    var dolly = this.dolly;
-    var deltaPosition = this.deltaPosition;
-    var previousPosition = this.previousPosition;
-    deltaPosition.copy(dolly.position);
-    deltaPosition.sub(previousPosition);
-    previousPosition.copy(dolly.position);
-    return deltaPosition;
-  },
-
-  updateHMDQuaternion: (function () {
-    var hmdQuaternion = new THREE.Quaternion();
-    return function () {
-      var dolly = this.dolly;
-      this.controls.update();
-      if (!this.zeroed && !dolly.quaternion.equals(this.zeroQuaternion)) {
-        this.zeroOrientation();
-        this.zeroed = true;
-      }
-      hmdQuaternion.copy(this.zeroQuaternion).multiply(dolly.quaternion);
-      return hmdQuaternion;
-    };
-  })(),
-
-  zeroOrientation: function () {
-    var euler = new THREE.Euler();
-    euler.setFromQuaternion(this.dolly.quaternion.clone().inverse());
-    // Cancel out roll and pitch. We want to only reset yaw
-    euler.z = 0;
-    euler.x = 0;
-    this.zeroQuaternion.setFromEuler(euler);
-  },
-
-  onMouseMove: function (event) {
-    var pitchObject = this.pitchObject;
-    var yawObject = this.yawObject;
-    var previousMouseEvent = this.previousMouseEvent;
-
-    if (!this.mouseDown || !this.data.enabled) { return; }
-
-    var movementX = event.movementX || event.mozMovementX;
-    var movementY = event.movementY || event.mozMovementY;
-
-    if (movementX === undefined || movementY === undefined) {
-      movementX = event.screenX - previousMouseEvent.screenX;
-      movementY = event.screenY - previousMouseEvent.screenY;
-    }
-    this.previousMouseEvent = event;
-
-    yawObject.rotation.y -= movementX * 0.002;
-    pitchObject.rotation.x -= movementY * 0.002;
-    pitchObject.rotation.x = Math.max(-PI_2, Math.min(PI_2, pitchObject.rotation.x));
-  },
-
-  onMouseDown: function (event) {
-    this.mouseDown = true;
-    this.previousMouseEvent = event;
-  },
-
-  releaseMouse: function () {
-    this.mouseDown = false;
-  },
-
-  onTouchStart: function (e) {
-    if (e.touches.length !== 1) { return; }
-    this.touchStart = {
-      x: e.touches[0].pageX,
-      y: e.touches[0].pageY
-    };
-    this.touchStarted = true;
-  },
-
-  onTouchMove: function (e) {
-    var deltaY;
-    var yawObject = this.yawObject;
-    if (!this.touchStarted) { return; }
-    deltaY = 2 * Math.PI * (e.touches[0].pageX - this.touchStart.x) / this.canvasEl.clientWidth;
-    // Limits touch orientaion to to yaw (y axis)
-    yawObject.rotation.y -= deltaY * 0.5;
-    this.touchStart = {
-      x: e.touches[0].pageX,
-      y: e.touches[0].pageY
-    };
-  },
-
-  onTouchEnd: function () {
-    this.touchStarted = false;
-  }
-});
-
-},{"../../lib/three":36,"../core/component":86}],69:[function(require,module,exports){
-/* global Promise */
-var debug = require('../utils/debug');
-var diff = require('../utils').diff;
-var registerComponent = require('../core/component').registerComponent;
-var srcLoader = require('../utils/src-loader');
-var THREE = require('../../lib/three');
-
-var CubeLoader = new THREE.CubeTextureLoader();
-var error = debug('components:material:error');
-var TextureLoader = new THREE.TextureLoader();
-var texturePromises = {};
-var warn = debug('components:material:warn');
-
-var MATERIAL_TYPE_BASIC = 'MeshBasicMaterial';
-var MATERIAL_TYPE_STANDARD = 'MeshStandardMaterial';
-
-/**
- * Material component.
- *
- * @namespace material
- * @param {string} color - Diffuse color.
- * @param {string} envMap - To load a environment cubemap. Takes a selector
- *         to an element containing six img elements, or a comma-separated
- *         string of direct url()s.
- * @param {boolean} fog - Whether or not to be affected by fog.
- * @param {number} height - Height to render texture.
- * @param {number} metalness - Parameter for physical/standard material.
- * @param {number} opacity - [0-1].
- * @param {number} reflectivity - Parameter for physical/standard material.
- * @param {string} repeat - X and Y value for size of texture repeating
- *         (in UV units).
- * @param {number} roughness - Parameter for physical/standard material.
- * @param {string} [side=front] - Which side(s) to render (i.e., front, back,
- *         both).
- * @param {string} shader - Determines how material is shaded. Defaults to `standard`,
- *         three.js's implementation of PBR. Another option is `flat` where we use
- *         MeshBasicMaterial.
- * @param {string} src - To load a texture. takes a selector to an img/video
- *         element or a direct url().
- * @param {boolean} transparent - Whether to render transparent the alpha
- *         channel of a texture (e.g., .png).
- * @param {number} width - Width to render texture.
- */
-module.exports.Component = registerComponent('material', {
-  schema: {
-    color: { default: '#FFF' },
-    envMap: { default: '' },
-    fog: { default: true },
-    height: { default: 360 },
-    metalness: { default: 0.0, min: 0.0, max: 1.0, if: { shader: ['standard'] } },
-    opacity: { default: 1.0, min: 0.0, max: 1.0 },
-    reflectivity: { default: 1.0, min: 0.0, max: 1.0, if: { shader: ['standard'] } },
-    repeat: { default: '' },
-    roughness: { default: 0.5, min: 0.0, max: 1.0, if: { shader: ['standard'] } },
-    shader: { default: 'standard', oneOf: ['flat', 'standard'] },
-    side: { default: 'front', oneOf: ['front', 'back', 'double'] },
-    src: { default: '' },
-    transparent: { default: false },
-    width: { default: 640 }
-  },
-
-  init: function () {
-    this.isLoadingEnvMap = false;
-    this.material = null;
-    this.textureSrc = null;
-  },
-
-  /**
-   * Update or create material.
-   *
-   * Material type depends on shader:
-   *   shader=flat - MeshBasicMaterial.
-   *   shader=XXX - MeshStandardMaterial.
-   *
-   * @param {object|null} oldData
-   */
-  update: function (oldData) {
-    var data = this.data;
-    var material;
-    var materialType = getMaterialType(data);
-    var src = data.src;
-
-    if (!oldData || getMaterialType(oldData) !== materialType) {
-      material = this.createMaterial(getMaterialData(data), materialType);
-    } else {
-      material = this.updateMaterial(processMaterialData(diff(oldData, data)));
-    }
-
-    // Load textures and/or cubemaps.
-    if (material.type === MATERIAL_TYPE_STANDARD) { this.updateEnvMap(); }
-    this.updateTexture(src);
-  },
-
-  /**
-   * Remove material on remove (callback).
-   */
-  remove: function () {
-    var el = this.el;
-    var defaultColor = this.schema.color.default;
-    var defaultMaterial = new THREE.MeshBasicMaterial({ color: defaultColor });
-    var object3D = el.object3D;
-    if (object3D) { object3D.material = defaultMaterial; }
-    el.sceneEl.unregisterMaterial(this.material);
-  },
-
-  /**
-   * (Re)create new material. Has side-effects of setting `this.material` and updating
-   * material registration in scene.
-   *
-   * @param {object} data - Material component data.
-   * @param {object} type - Material type to create.
-   * @returns {object} Material.
-   */
-  createMaterial: function (data, type) {
-    var material;
-    var sceneEl = this.el.sceneEl;
-    if (this.material) {
-      sceneEl.unregisterMaterial(this.material);
-    }
-    material = this.material = this.el.object3D.material = new THREE[type](data);
-    sceneEl.registerMaterial(material);
-    return material;
-  },
-
-  /**
-   * Updating existing material.
-   *
-   * @param {object} data - Material component data.
-   * @returns {object} Material.
-   */
-  updateMaterial: function (data) {
-    var material = this.material;
-    Object.keys(data).forEach(function (key) {
-      material[key] = data[key];
-    });
-    return material;
-  },
-
-  /**
-   * Handle environment cubemap. Textures are cached in texturePromises.
-   */
-  updateEnvMap: function () {
-    var self = this;
-    var material = this.material;
-    var envMap = this.data.envMap;
-    // Environment cubemaps.
-    if (!envMap || this.isLoadingEnvMap) {
-      material.envMap = null;
-      material.needsUpdate = true;
-      return;
-    }
-    this.isLoadingEnvMap = true;
-    if (texturePromises[envMap]) {
-      // Another material is already loading this texture. Wait on promise.
-      texturePromises[envMap].then(function (cube) {
-        self.isLoadingEnvMap = false;
-        material.envMap = cube;
-        material.needsUpdate = true;
-      });
-    } else {
-      // Material is first to load this texture. Load and resolve texture.
-      texturePromises[envMap] = new Promise(function (resolve) {
-        srcLoader.validateCubemapSrc(envMap, function loadEnvMap (urls) {
-          CubeLoader.load(urls, function (cube) {
-            // Texture loaded.
-            self.isLoadingEnvMap = false;
-            material.envMap = cube;
-            resolve(cube);
-          });
-        });
-      });
-    }
-  },
-
-  /*
-   * Updates material texture map.
-   *
-   * @param {string|object} src - An <img> / <video> element or url to an image/video file.
-   */
-  updateTexture: function (src) {
-    var data = this.data;
-    var material = this.material;
-    if (src) {
-      if (src !== this.textureSrc) {
-        // Texture added or changed.
-        this.textureSrc = src;
-        srcLoader.validateSrc(src, loadImage, loadVideo);
-      }
-    } else {
-      // Texture removed.
-      material.map = null;
-      material.needsUpdate = true;
-    }
-    function loadImage (src) { loadImageTexture(material, src, data.repeat); }
-    function loadVideo (src) { loadVideoTexture(material, src, data.width, data.height); }
-  }
-});
-
-/**
- * Sets image texture on material as `map`.
- *
- * @param {object} material - three.js material.
- * @param {string|object} src - An <img> element or url to an image file.
- * @param {string} repeat - X and Y value for size of texture repeating (in UV units).
- */
-function loadImageTexture (material, src, repeat) {
-  var isEl = typeof src !== 'string';
-
-  var onLoad = createTexture;
-  var onProgress = function () {};
-  var onError = function (xhr) {
-    error('The URL "$s" could not be fetched (Error code: %s; Response: %s)',
-          xhr.status, xhr.statusText);
-  };
-
-  if (isEl) {
-    createTexture(src);
-  } else {
-    TextureLoader.load(src, onLoad, onProgress, onError);
-  }
-
-  function createTexture (texture) {
-    if (!(texture instanceof THREE.Texture)) { texture = new THREE.Texture(texture); }
-    var repeatXY;
-    if (repeat) {
-      repeatXY = repeat.split(' ');
-      if (repeatXY.length === 2) {
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(parseInt(repeatXY[0], 10),
-                           parseInt(repeatXY[1], 10));
-      }
-    }
-    material.map = texture;
-    texture.needsUpdate = true;
-    material.needsUpdate = true;
-  }
-}
-
-/**
- * Creates a video element to be used as a texture.
- *
- * @param {object} material - three.js material.
- * @param {string} src - Url to a video file.
- * @param {number} width - Width of the video.
- * @param {number} height - Height of the video.
- * @returns {Element} Video element.
- */
-function createVideoEl (material, src, width, height) {
-  var el = material.videoEl || document.createElement('video');
-  function onError () {
-    warn('The URL "$s" is not a valid image or video', src);
-  }
-  el.width = width;
-  el.height = height;
-  // Attach event listeners if brand new video element.
-  if (el !== this.videoEl) {
-    el.autoplay = true;
-    el.loop = true;
-    el.crossOrigin = true;
-    el.addEventListener('error', onError, true);
-    material.videoEl = el;
-  }
-  el.src = src;
-  return el;
-}
-
-/**
- * Sets video texture on material as map.
- *
- * @param {object} material - three.js material.
- * @param {string} src - Url to a video file.
- * @param {number} width - Width of the video.
- * @param {number} height - Height of the video.
-*/
-function loadVideoTexture (material, src, height, width) {
-  // three.js video texture loader requires a <video>.
-  var videoEl = typeof src !== 'string' ? fixVideoAttributes(src) : createVideoEl(material, src, height, width);
-  var texture = new THREE.VideoTexture(videoEl);
-  texture.minFilter = THREE.LinearFilter;
-  texture.needsUpdate = true;
-  material.map = texture;
-  material.needsUpdate = true;
-}
-
-/**
- * Fixes a video element's attributes to prevent developers from accidentally
- * passing the wrong attribute values to commonly misused video attributes.
- *
- * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video#Attributes
- * @param {Element} videoEl - Video element.
- * @returns {Element} Video element with the correct properties updated.
- */
-function fixVideoAttributes (videoEl) {
-  // The `<video>` element treats `loop` and `muted` as boolean attributes, but
-  // of course does not with `autoplay`, `controls`, `preload` (and `crossorigin`).
-  // If we get passed a `<video autoplay="false">`, let's assume the dev wanted
-  // `autoplay` to be disabled.
-  videoEl.autoplay = videoEl.getAttribute('autoplay') !== 'false';
-  videoEl.controls = videoEl.getAttribute('controls') !== 'false';
-  if (videoEl.getAttribute('preload') === 'false') {
-    videoEl.preload = 'none';
-  }
-  return videoEl;
-}
-
-/**
- * Builds and normalize material data, normalizing stuff along the way.
- *
- * @param {object} data - Material data.
- * @returns {object} data - Processed material data.
- */
-function getMaterialData (data) {
-  var materialData = {
-    color: data.color,
-    side: data.side,
-    opacity: data.opacity,
-    transparent: data.transparent !== false || data.opacity < 1.0
-  };
-  if (getMaterialType(data) === MATERIAL_TYPE_STANDARD) {
-    // Attach standard material parameters.
-    materialData.metalness = data.metalness;
-    materialData.reflectivity = data.reflectivity;
-    materialData.roughness = data.roughness;
-  }
-  return processMaterialData(materialData);
-}
-
-/**
- * Necessary transforms to material data before passing to three.js.
- *
- * @param {object} data - Material data.
- * @returns {object} Processed material data.
- */
-function processMaterialData (data) {
-  if ('color' in data) {
-    data.color = new THREE.Color(data.color);
-  }
-  if ('opacity' in data && data.opacity < 1) {
-    data.transparent = true;
-  }
-  if ('side' in data) {
-    data.side = getSide(data.side);
-  }
-  return data;
-}
-
-/**
- * Get material type based on shader.
- *
- * @param {object} Material component data.
- * @returns {string} Material type (as three.js constructor name)
- */
-function getMaterialType (data) {
-  return data.shader === 'flat' ? MATERIAL_TYPE_BASIC : MATERIAL_TYPE_STANDARD;
-}
-
-/**
- * Returns a three.js constant determining which material face sides to render
- * based on the side parameter (passed as a component attribute).
- *
- * @param {string} [side=front] - `front`, `back`, or `double`.
- * @returns {number} THREE.FrontSide, THREE.BackSide, or THREE.DoubleSide.
- */
-function getSide (side) {
-  switch (side) {
-    case 'back': {
-      return THREE.BackSide;
-    }
-    case 'double': {
-      return THREE.DoubleSide;
-    }
-    default: {
-      // Including case `front`.
-      return THREE.FrontSide;
-    }
-  }
-}
-
-},{"../../lib/three":36,"../core/component":86,"../utils":91,"../utils/debug":90,"../utils/src-loader":92}],70:[function(require,module,exports){
-var coordinatesMixin = require('../utils/coordinates').componentMixin;
-var registerComponent = require('../core/component').registerComponent;
-var utils = require('../utils/');
-
-module.exports.Component = registerComponent('position', utils.extend({
-  schema: {
-    x: { default: 0 },
-    y: { default: 0 },
-    z: { default: 0 }
-  },
-
-  update: function () {
-    var object3D = this.el.object3D;
-    var data = this.data;
-    object3D.position.set(data.x, data.y, data.z);
-  }
-}, coordinatesMixin));
-
-},{"../core/component":86,"../utils/":91,"../utils/coordinates":89}],71:[function(require,module,exports){
-var registerComponent = require('../core/component').registerComponent;
-var requestInterval = require('request-interval');
-var THREE = require('../../lib/three');
-
-module.exports.Component = registerComponent('raycaster', {
-  init: function () {
-    this.raycaster = new THREE.Raycaster();
-    this.intersectedEl = null;
-    this.pollForHoverIntersections();
-  },
-
-  remove: function () {
-    requestInterval.clear(this.pollInterval);
-  },
-
-  pollForHoverIntersections: function () {
-    this.pollInterval = requestInterval(100, this.getIntersections.bind(this));
-  },
-
-  getIntersections: function () {
-    var closest = this.getClosestIntersected();
-    if (closest) {
-      this.handleIntersection(closest);
-      return;
-    }
-    // If we have no intersections other than the cursor itself,
-    // but we still have a previously intersected element, clear it.
-    if (this.intersectedEl) {
-      this.clearExistingIntersection();
-    }
-  },
-
-  intersect: function (objects) {
-    var el = this.el;
-    var raycaster = this.raycaster;
-    var cursor = el.object3D;
-    var parent = el.parentNode.object3D;
-    var originPosition = new THREE.Vector3().setFromMatrixPosition(parent.matrixWorld);
-    var cursorPosition = new THREE.Vector3().setFromMatrixPosition(cursor.matrixWorld);
-    var direction = cursorPosition.sub(originPosition).normalize();
-    raycaster.set(originPosition, direction);
-    return raycaster.intersectObjects(objects, true);
-  },
-
-  /**
-   * Returns the closest intersected object.
-   *
-   * @returns {Object|null}
-   *   The closest intersected element that is not the cursor itself,
-   *   an invisible element, or not a a-frame entity element.
-   *   If no objects are intersected, `null` is returned.
-   */
-  getClosestIntersected: function () {
-    var scene = this.el.sceneEl.object3D;
-    var cursorEl = this.el;
-    var intersectedObj;
-    var intersectedObjs = this.intersect(scene.children);
-    for (var i = 0; i < intersectedObjs.length; ++i) {
-      intersectedObj = intersectedObjs[i];
-      // If the intersected object is the cursor itself
-      // or the object is further than the max distance
-      if (intersectedObj.object.el === undefined) { continue; }
-      if (intersectedObj.object.el === cursorEl) { continue; }
-      if (!intersectedObj.object.visible) { continue; }
-      return intersectedObj;
-    }
-    return null;
-  },
-
-  /**
-   * Remembers the last intersected element
-   */
-  setExistingIntersection: function (el, distance) {
-    this.intersectedEl = el;
-    this.el.emit('intersection', { el: el, distance: distance });
-  },
-
-  /**
-   * Emits a `mouseleave` event and clears info about the last intersection.
-   */
-  clearExistingIntersection: function () {
-    var intersectedEl = this.intersectedEl;
-    this.el.emit('intersectioncleared', { el: intersectedEl });
-    this.intersectedEl = null;
-  },
-
-  handleIntersection: function (obj) {
-    var el = obj.object.el;
-
-    // A new intersection where previously a different element was
-    // and now needs a mouseleave event.
-    if (this.intersectedEl !== el) {
-      this.clearExistingIntersection();
-    }
-    this.setExistingIntersection(el, obj.distance);
-  }
-});
-
-},{"../../lib/three":36,"../core/component":86,"request-interval":52}],72:[function(require,module,exports){
-var coordinatesMixin = require('../utils/coordinates').componentMixin;
-var registerComponent = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-var utils = require('../utils/');
-
-module.exports.Component = registerComponent('rotation', utils.extend({
-  schema: {
-    x: { default: 0 },
-    y: { default: 0 },
-    z: { default: 0 }
-  },
-
-  /**
-   * Updates object3D rotation.
-   */
-  update: function () {
-    var data = this.data;
-    var object3D = this.el.object3D;
-    object3D.rotation.set(THREE.Math.degToRad(data.x),
-                          THREE.Math.degToRad(data.y),
-                          THREE.Math.degToRad(data.z));
-    object3D.rotation.order = 'YXZ';
-  }
-}, coordinatesMixin));
-
-},{"../../lib/three":36,"../core/component":86,"../utils/":91,"../utils/coordinates":89}],73:[function(require,module,exports){
-var coordinatesMixin = require('../utils/coordinates').componentMixin;
-var registerComponent = require('../core/component').registerComponent;
-var utils = require('../utils/');
-
-// Avoids triggering a zero-determinant which makes object3D matrix non-invertible.
-var zeroScale = 0.00001;
-
-module.exports.Component = registerComponent('scale', utils.extend({
-  schema: {
-    x: { default: 1 },
-    y: { default: 1 },
-    z: { default: 1 }
-  },
-
-  update: function () {
-    var data = this.data;
-    var object3D = this.el.object3D;
-    var x = data.x === 0 ? zeroScale : data.x;
-    var y = data.y === 0 ? zeroScale : data.y;
-    var z = data.z === 0 ? zeroScale : data.z;
-    object3D.scale.set(x, y, z);
-  }
-}, coordinatesMixin));
-
-},{"../core/component":86,"../utils/":91,"../utils/coordinates":89}],74:[function(require,module,exports){
-var debug = require('../utils/debug');
-var diff = require('../utils').diff;
-var registerComponent = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-
-var warn = debug('components:sound:warn');
-
-/**
- * Sound component.
- *
- * @param {bool} [autoplay=false]
- * @param {string} on
- * @param {bool} [loop=false]
- * @param {number} [volume=1]
- */
-module.exports.Component = registerComponent('sound', {
-  schema: {
-    src: { default: '' },
-    on: { default: 'click' },
-    autoplay: { default: false },
-    loop: { default: false },
-    volume: { default: 1 }
-  },
-
-  init: function () {
-    this.listener = null;
-    this.sound = null;
-  },
-
-  update: function (oldData) {
-    var data = this.data;
-    var diffData = diff(oldData || {}, data);
-    var el = this.el;
-    var sound = this.sound;
-    var src = data.src;
-    var srcChanged = 'src' in diffData;
-
-    // Create new sound if not yet created or changing `src`.
-    if (srcChanged) {
-      if (!src) {
-        warn('Audio source was not specified with `src`');
-        return;
-      }
-      sound = this.setupSound();
-    }
-
-    if (srcChanged || 'autoplay' in diffData) {
-      sound.autoplay = data.autoplay;
-    }
-
-    if (srcChanged || 'loop' in diffData) {
-      sound.setLoop(data.loop);
-    }
-
-    if (srcChanged || 'volume' in diffData) {
-      sound.setVolume(data.volume);
-    }
-
-    if ('on' in diffData) {
-      if (oldData && oldData.on) {
-        el.removeEventListener(oldData.on);
-      }
-      el.addEventListener(data.on, this.play.bind(this));
-    }
-
-    // All sound values set. Load in `src.
-    if (srcChanged) {
-      sound.load(src);
-    }
-  },
-
-  remove: function () {
-    this.el.object3D.remove(this.sound);
-  },
-
-  /**
-   * Removes current sound object, creates new sound object, adds to entity.
-   *
-   * @returns {object} sound
-   */
-  setupSound: function () {
-    var el = this.el;
-    var listener;
-    var sound = this.sound;
-
-    if (sound) {
-      this.stop();
-      el.object3D.remove(sound);
-    }
-
-    listener = this.listener = new THREE.AudioListener();
-    sound = this.sound = new THREE.Audio(listener);
-    el.object3D.add(sound);
-    return sound;
-  },
-
-  play: function () {
-    this.sound.play();
-  },
-
-  stop: function () {
-    this.sound.stop();
-  },
-
-  pause: function () {
-    this.sound.pause();
-  }
-});
-
-},{"../../lib/three":36,"../core/component":86,"../utils":91,"../utils/debug":90}],75:[function(require,module,exports){
-var registerComponent = require('../core/component').registerComponent;
-
-/**
- * Visibility component.
- *
- * @param {bool}
- */
-module.exports.Component = registerComponent('visible', {
-  schema: { default: true },
-
-  update: function () {
-    this.el.object3D.visible = this.data;
-  },
-
-  parse: function (value) {
-    return value !== 'false';
-  },
-
-  stringify: function (value) {
-    return value.toString();
-  }
-});
-
-},{"../core/component":86}],76:[function(require,module,exports){
-var registerComponent = require('../core/component').registerComponent;
-var THREE = require('../../lib/three');
-
-var MAX_DELTA = 0.2;
-
-/**
- * WASD component.
- *
- * Control your entities with the WASD keys.
- *
- * @namespace wasd-controls
- * @param {number} [easing=20] - How fast the movement decelerates. If you hold the
- * keys the entity moves and if you release it will stop. Easing simulates friction.
- * @param {number} [acceleration=65] - Determines the acceleration given
- * to the entity when pressing the keys.
- * @param {bool} [enabled=true] - To completely enable or disable the controls
- * @param {bool} [fly=false] - Determines if the direction of the movement sticks
- * to the plane where the entity started off or if there are 6 degrees of
- * freedom as a diver underwater or a plane flying.
- * @param {string} [wsAxis='z'] - The axis that the W and S keys operate on
- * @param {string} [adAxis='x'] - The axis that the A and D keys operate on
- * @param {bool} [wsInverted=false] - WS Axis is inverted
- * @param {bool} [adInverted=false] - AD Axis is inverted
- */
-module.exports.Component = registerComponent('wasd-controls', {
-  schema: {
-    easing: { default: 20 },
-    acceleration: { default: 65 },
-    enabled: { default: true },
-    fly: { default: false },
-    wsAxis: { default: 'z', oneOf: [ 'x', 'y', 'z' ] },
-    adAxis: { default: 'x', oneOf: [ 'x', 'y', 'z' ] },
-    wsInverted: { default: false },
-    wsEnabled: { default: true },
-    adInverted: { default: false },
-    adEnabled: { default: true }
-  },
-
-  init: function () {
-    this.setupControls();
-  },
-
-  setupControls: function () {
-    var scene = this.el.sceneEl;
-    this.prevTime = Date.now();
-    // To keep track of the pressed keys
-    this.keys = {};
-    this.velocity = new THREE.Vector3();
-    this.attachEventListeners();
-    scene.addBehavior(this);
-  },
-
-  update: function (previousData) {
-    var data = this.data;
-    var acceleration = data.acceleration;
-    var easing = data.easing;
-    var velocity = this.velocity;
-    var time = window.performance.now();
-    var delta = (time - this.prevTime) / 1000;
-    var keys = this.keys;
-    var movementVector;
-    var adAxis = data.adAxis;
-    var wsAxis = data.wsAxis;
-    var adSign = data.adInverted ? -1 : 1;
-    var wsSign = data.wsInverted ? -1 : 1;
-    var el = this.el;
-    this.prevTime = time;
-
-    // If data has changed or FPS is too low
-    // we reset the velocity
-    if (previousData || delta > MAX_DELTA) {
-      velocity[adAxis] = 0;
-      velocity[wsAxis] = 0;
-      return;
-    }
-
-    velocity[adAxis] -= velocity[adAxis] * easing * delta;
-    velocity[wsAxis] -= velocity[wsAxis] * easing * delta;
-
-    var position = el.getComputedAttribute('position');
-
-    if (data.enabled) {
-      if (data.adEnabled) {
-        if (keys[65]) { velocity[adAxis] -= adSign * acceleration * delta; } // Left
-        if (keys[68]) { velocity[adAxis] += adSign * acceleration * delta; } // Right
-      }
-      if (data.wsEnabled) {
-        if (keys[87]) { velocity[wsAxis] -= wsSign * acceleration * delta; } // Up
-        if (keys[83]) { velocity[wsAxis] += wsSign * acceleration * delta; } // Down
-      }
-    }
-
-    movementVector = this.getMovementVector(delta);
-    el.object3D.translateX(movementVector.x);
-    el.object3D.translateY(movementVector.y);
-    el.object3D.translateZ(movementVector.z);
-
-    el.setAttribute('position', {
-      x: position.x + movementVector.x,
-      y: position.y + movementVector.y,
-      z: position.z + movementVector.z
-    });
-  },
-
-  attachEventListeners: function () {
-    // Keyboard events
-    window.addEventListener('keydown', this.onKeyDown.bind(this), false);
-    window.addEventListener('keyup', this.onKeyUp.bind(this), false);
-  },
-
-  onKeyDown: function (event) {
-    this.keys[event.keyCode] = true;
-  },
-
-  onKeyUp: function (event) {
-    this.keys[event.keyCode] = false;
-  },
-
-  getMovementVector: (function (delta) {
-    var direction = new THREE.Vector3(0, 0, 0);
-    var rotation = new THREE.Euler(0, 0, 0, 'YXZ');
-    return function (delta) {
-      var velocity = this.velocity;
-      var elRotation = this.el.getAttribute('rotation');
-      direction.copy(velocity);
-      direction.multiplyScalar(delta);
-      if (!elRotation) { return direction; }
-      if (!this.data.fly) { elRotation.x = 0; }
-      rotation.set(THREE.Math.degToRad(elRotation.x),
-                   THREE.Math.degToRad(elRotation.y), 0);
-      direction.applyEuler(rotation);
-      return direction;
-    };
-  })()
-});
-
-},{"../../lib/three":36,"../core/component":86}],77:[function(require,module,exports){
-/**
- * Animation configuration options for TWEEN.js animations.
- * Used by `<a-animation>`.
- */
-var TWEEN = require('tween.js');
-
-var DIRECTIONS = {
-  alternate: 'alternate',
-  alternateReverse: 'alternate-reverse',
-  normal: 'normal',
-  reverse: 'reverse'
-};
-
-var EASING_FUNCTIONS = {
-  'linear': TWEEN.Easing.Linear.None,
-
-  'ease': TWEEN.Easing.Cubic.InOut,
-  'ease-in': TWEEN.Easing.Cubic.In,
-  'ease-out': TWEEN.Easing.Cubic.Out,
-  'ease-in-out': TWEEN.Easing.Cubic.InOut,
-
-  'ease-cubic': TWEEN.Easing.Cubic.In,
-  'ease-in-cubic': TWEEN.Easing.Cubic.In,
-  'ease-out-cubic': TWEEN.Easing.Cubic.Out,
-  'ease-in-out-cubic': TWEEN.Easing.Cubic.InOut,
-
-  'ease-quad': TWEEN.Easing.Quadratic.InOut,
-  'ease-in-quad': TWEEN.Easing.Quadratic.In,
-  'ease-out-quad': TWEEN.Easing.Quadratic.Out,
-  'ease-in-out-quad': TWEEN.Easing.Quadratic.InOut,
-
-  'ease-quart': TWEEN.Easing.Quartic.InOut,
-  'ease-in-quart': TWEEN.Easing.Quartic.In,
-  'ease-out-quart': TWEEN.Easing.Quartic.Out,
-  'ease-in-out-quart': TWEEN.Easing.Quartic.InOut,
-
-  'ease-quint': TWEEN.Easing.Quintic.InOut,
-  'ease-in-quint': TWEEN.Easing.Quintic.In,
-  'ease-out-quint': TWEEN.Easing.Quintic.Out,
-  'ease-in-out-quint': TWEEN.Easing.Quintic.InOut,
-
-  'ease-sine': TWEEN.Easing.Sinusoidal.InOut,
-  'ease-in-sine': TWEEN.Easing.Sinusoidal.In,
-  'ease-out-sine': TWEEN.Easing.Sinusoidal.Out,
-  'ease-in-out-sine': TWEEN.Easing.Sinusoidal.InOut,
-
-  'ease-expo': TWEEN.Easing.Exponential.InOut,
-  'ease-in-expo': TWEEN.Easing.Exponential.In,
-  'ease-out-expo': TWEEN.Easing.Exponential.Out,
-  'ease-in-out-expo': TWEEN.Easing.Exponential.InOut,
-
-  'ease-circ': TWEEN.Easing.Circular.InOut,
-  'ease-in-circ': TWEEN.Easing.Circular.In,
-  'ease-out-circ': TWEEN.Easing.Circular.Out,
-  'ease-in-out-circ': TWEEN.Easing.Circular.InOut,
-
-  'ease-elastic': TWEEN.Easing.Elastic.InOut,
-  'ease-in-elastic': TWEEN.Easing.Elastic.In,
-  'ease-out-elastic': TWEEN.Easing.Elastic.Out,
-  'ease-in-out-elastic': TWEEN.Easing.Elastic.InOut,
-
-  'ease-back': TWEEN.Easing.Back.InOut,
-  'ease-in-back': TWEEN.Easing.Back.In,
-  'ease-out-back': TWEEN.Easing.Back.Out,
-  'ease-in-out-back': TWEEN.Easing.Back.InOut,
-
-  'ease-bounce': TWEEN.Easing.Bounce.InOut,
-  'ease-in-bounce': TWEEN.Easing.Bounce.In,
-  'ease-out-bounce': TWEEN.Easing.Bounce.Out,
-  'ease-in-out-bounce': TWEEN.Easing.Bounce.InOut
-};
-
-var FILLS = {
-  backwards: 'backwards',
-  both: 'both',
-  forwards: 'forwards',
-  none: 'none'
-};
-
-var REPEATS = {
-  indefinite: 'indefinite'
-};
-
-var DEFAULTS = {
-  attribute: 'rotation',
-  begin: '0',
-  dur: 1000,
-  easing: 'ease',
-  direction: DIRECTIONS.normal,
-  fill: FILLS.forwards,
-  from: undefined,
-  repeat: 0,
-  to: undefined
-};
-
-module.exports.defaults = DEFAULTS;
-module.exports.directions = DIRECTIONS;
-module.exports.easingFunctions = EASING_FUNCTIONS;
-module.exports.fills = FILLS;
-module.exports.repeats = REPEATS;
-
-},{"tween.js":57}],78:[function(require,module,exports){
-var ANode = require('./a-node');
-var coerce = require('../utils/').coerce;
-var constants = require('../constants/animation');
-var coordinates = require('../utils/').coordinates;
-var registerElement = require('./a-register-element').registerElement;
-var TWEEN = require('tween.js');
-var utils = require('../utils/');
-
-var DEFAULTS = constants.defaults;
-var DIRECTIONS = constants.directions;
-var EASING_FUNCTIONS = constants.easingFunctions;
-var FILLS = constants.fills;
-var REPEATS = constants.repeats;
-var isCoordinate = coordinates.isCoordinate;
-
-/**
- * Animation element that applies Tween animation to parent element (entity).
- * Takes after the Web Animations spec.
- *
- * @namespace <a-animation>
- * @param {string} attribute -
- *   Entity attribute to animate. Can be a component name (e.g., `position`) if the component
- *   is set via a single value. Or can be a dot-separated componentName.componentAttr to
- *   animate a single component attribute (e.g., `light.intensity`, `material.opacity`).
- * @param {number|string} begin -
- *   Either milliseconds to delay or an event name to wait upon before starting animation.
- * @param {string} direction -
- *   Direction of the animation between from and to.
- *     - alternate: Even iterations played as specified, odd iterations played in reverse
- *                direction from way specified.
- *     - alternate-reverse: Even iterations are played in the reverse direction from way
- *                        specified, odd iterations played as specified.
- *     - normal: All iterations are played as specified.
- *     - reverse: All iterations are played in reverse direction from way specified.
- * @param {number} dur - How long to run the animation in milliseconds.
- * @param {string} easing -
- *   Easing function of animation (e.g., ease, ease-in, ease-in-out, ease-out, linear).
- * @param {string} [fill=forwards] -
- *   Determines effect of animation when not in play.
- *     - backwards: Before animation, set initial value to `from`.
- *     - both: Before animation, backwards fill. After animation, forwards fill.
- *     - forwards: After animation, value will stay at `to`.
- *     - none: Animation has no effect when not in play.
- * @param {number} from - Start value. Defaults to the entity's current value for that attr.
- * @param {number|string} repeat -
- *   How the animation should repeat (e.g., a number or `indefinite`).
- * @param {number} to - End value.
- * @member {number} count -
- *   Decrementing counter for how many cycles of animations left to run.
- * @member {Element} el - Entity which the animation is modifying to.
- * @member initialValue - Value before animation started. Used to restore state.
- * @member {bool} isRunning - Whether animation is currently running.
- * @member {function} partialSetAttribute -
- *   setAttribute function that is agnostic to whether we are setting an attribute value
- *   or a component attribute value. The el and the attribute names are bundled with
- *   the function.
- * @member {object} tween - tween.js object.
- */
-module.exports.AAnimation = registerElement('a-animation', {
-  prototype: Object.create(ANode.prototype, {
-    createdCallback: {
-      value: function () {
-        this.isRunning = false;
-        this.partialSetAttribute = function () { /* no-op */ };
-        this.tween = null;
-      }
-    },
-
-    attachedCallback: {
-      value: function () {
-        var self = this;
-        var el = self.el = self.parentNode;
-
-        if (el.isNode) {
-          init();
-        } else {
-          // To handle elements that are not yet `<a-entity>`s (e.g., templates).
-          el.addEventListener('nodeready', init.bind(self));
-        }
-
-        function init () {
-          self.bindMethods();
-          self.applyMixin();
-          self.update();
-          self.load();
-        }
-      }
-    },
-
-    attributeChangedCallback: {
-      value: function (attr, oldVal, newVal) {
-        if (!this.hasLoaded || !this.isRunning) { return; }
-        this.stop();
-        this.applyMixin();
-        this.update();
-      }
-    },
-
-    /**
-     * Builds a Tween object to handle animations.
-     * Uses tween.js's from, to, delay, easing, repeat, onUpdate, and onComplete.
-     * Note: tween.js takes objects for its `from` and `to` values.
-     *
-     * @returns {object}
-     */
-    getTween: {
-      value: function () {
-        var self = this;
-        var data = self.data;
-        var el = self.el;
-        var animationValues;
-        var attribute = data.attribute;
-        var begin = parseInt(data.begin, 10);
-        var currentValue = el.getComputedAttribute(attribute);
-        var direction = self.getDirection(data.direction);
-        var easing = EASING_FUNCTIONS[data.easing];
-        var fill = data.fill;
-        var from;
-        var repeat = data.repeat === REPEATS.indefinite ? Infinity : 0;
-        var to;
-        var toTemp;
-        var yoyo = false;
-
-        animationValues = getAnimationValues(el, attribute, data.from, data.to, currentValue);
-        from = animationValues.from;
-        to = animationValues.to;
-        self.partialSetAttribute = animationValues.partialSetAttribute;
-
-        if (self.count === undefined) {
-          self.count = repeat === Infinity ? 0 : parseInt(data.repeat, 10);
-        }
-
-        if (isNaN(begin)) { begin = 0; }
-
-        // Store initial state.
-        self.initialValue = cloneValue(currentValue);
-
-        // Handle indefinite + forwards + alternate yoyo edge-case (#405).
-        if (repeat === Infinity && fill === FILLS.forwards &&
-            [DIRECTIONS.alternate,
-             DIRECTIONS.alternateReverse].indexOf(data.direction) !== -1) {
-          yoyo = true;
-        }
-
-        // If reversing, swap from and to.
-        if (direction === DIRECTIONS.reverse) {
-          toTemp = to;
-          to = cloneValue(from);
-          from = cloneValue(toTemp);
-        }
-
-        // If fill is backwards or both, start animation at the specified from.
-        if ([FILLS.backwards, FILLS.both].indexOf(fill) !== -1) {
-          self.partialSetAttribute(from);
-        }
-
-        // Create Tween.
-        return new TWEEN.Tween(cloneValue(from))
-          .to(to, data.dur)
-          .delay(begin)
-          .easing(easing)
-          .repeat(repeat)
-          .yoyo(yoyo)
-          .onUpdate(function () {
-            self.partialSetAttribute(this);
-          })
-          .onComplete(self.onCompleted.bind(self));
-      }
-    },
-
-    /**
-     * Animation parameters changed. Stop current animation, get a new one, and start it.
-     */
-    update: {
-      value: function () {
-        var data = this.data;
-        var begin = data.begin;
-        // Cancel previous event listeners
-        this.removeEventListeners(this.evt);
-        this.addEventListeners(begin);
-        // Store new event name.
-        this.evt = begin;
-        // If `begin` is a number, start the animation right away.
-        if (!isNaN(begin)) {
-          this.stop();
-          this.start();
-        }
-      },
-      writable: window.debug
-    },
-
-    /**
-     * Callback for when a cycle of an animation is complete. Handles when to completely
-     * finish the animation.
-     *
-     * If `repeat` is set to a value, this method is called after each repeat. Repeats are
-     * handled by ending the current animation and creating a new one with `count` updated.
-     * Note that this method is *not* called if repeat is set to `indefinite`.
-     */
-    onCompleted: {
-      value: function () {
-        var data = this.data;
-        this.isRunning = false;
-        if ([FILLS.backwards, FILLS.none].indexOf(data.fill) !== -1) {
-          this.partialSetAttribute(this.initialValue);
-        }
-        if (this.count === 0) {
-          this.count = undefined;
-          this.emit('animationend');
-          return;
-        }
-        this.isRunning = false;
-        this.count--;
-        this.start();
-      }
-    },
-
-    start: {
-      value: function () {
-        if (this.isRunning) { return; }
-        this.tween = this.getTween();
-        this.isRunning = true;
-        this.tween.start();
-        this.emit('animationstart');
-      },
-      writable: true
-    },
-
-    stop: {
-      value: function () {
-        var tween = this.tween;
-        if (!tween) { return; }
-        tween.stop();
-        this.isRunning = false;
-        this.partialSetAttribute(this.initialValue);
-      },
-      writable: true
-    },
-
-    /**
-     * Handle alternating directions. Given the current direction, calculate the next one,
-     * and store the current one.
-     *
-     * @param {string} direction
-     * @returns {string} Direction that the next individual cycle of the animation will go
-     *          towards.
-     */
-    getDirection: {
-      value: function (direction) {
-        if (direction === DIRECTIONS.alternate) {
-          this.prevDirection =
-            this.prevDirection === DIRECTIONS.normal ? DIRECTIONS.reverse : DIRECTIONS.normal;
-          return this.prevDirection;
-        }
-        if (direction === DIRECTIONS.alternateReverse) {
-          this.prevDirection =
-            this.prevDirection === DIRECTIONS.reverse ? DIRECTIONS.normal : DIRECTIONS.reverse;
-          return this.prevDirection;
-        }
-        return direction;
-      }
-    },
-
-    /**
-     * Preemptive binding to attach/detach event listeners (see `update`).
-     */
-    bindMethods: {
-      value: function () {
-        this.start = this.start.bind(this);
-        this.stop = this.stop.bind(this);
-        this.onStateAdded = this.onStateAdded.bind(this);
-        this.onStateRemoved = this.onStateRemoved.bind(this);
-      }
-    },
-
-    addEventListeners: {
-      value: function (evts) {
-        var el = this.el;
-        var start = this.start.bind(this);
-        utils.splitString(evts).forEach(function (evt) {
-          el.addEventListener(evt, start);
-        });
-        el.addEventListener('stateadded', this.onStateAdded);
-        el.addEventListener('stateremoved', this.onStateRemoved);
-      }
-    },
-
-    removeEventListeners: {
-      value: function (evts) {
-        var el = this.el;
-        var start = this.start;
-        utils.splitString(evts).forEach(function (evt) {
-          el.removeEventListener(evt, start);
-        });
-        el.removeEventListener('stateadded', this.onStateAdded);
-        el.removeEventListener('stateremoved', this.onStateRemoved);
-      }
-    },
-
-    onStateAdded: {
-      value: function (evt) {
-        if (evt.detail.state === this.data.begin) { this.start(); }
-      },
-      writable: true
-    },
-
-    onStateRemoved: {
-      value: function (evt) {
-        if (evt.detail.state === this.data.begin) { this.stop(); }
-      },
-      writable: true
-    },
-
-    /**
-     * Applies animation data from a mixin element.
-     * Works the same as component mixins but reimplemented because animations
-     * aren't components.
-     */
-    applyMixin: {
-      value: function () {
-        var data = {};
-        var elData;
-        var mixinData;
-        var mixinEl;
-
-        // Get mixin data.
-        mixinEl = document.querySelector('#' + this.getAttribute('mixin'));
-        mixinData = mixinEl ? utils.getElData(mixinEl, DEFAULTS) : {};
-
-        elData = utils.getElData(this, DEFAULTS);
-        utils.extend(data, DEFAULTS, mixinData, elData);
-        this.data = data;
-      }
-    }
-  })
-});
-
-function cloneValue (val) {
-  return utils.extend({}, val);
-}
-
-/**
- * Deduces different animation values based on whether we are:
- *   - animating an inner attribute of a component.
- *   - animating a coordinate component.
- *   - animating a boolean.
- *   - animating a number.
- *
- * @param {Element} el
- * @param {string} attribute - Tells what to animate based on whether it is dot-separated.
- * @param {string} dataFrom - Data `from` value.
- * @param {string} dataTo - Data `to` value.
- * @param currentValue
- * @returns {object}
- *   Object with keys [from, to, partialSetAttribute].
- *     `from` and `to`
- *        Objects where key is attribute being animated and value is value.
- *     `partialSetAttribute`
- *        Closured-function that tells tween how to update the component.
- */
-function getAnimationValues (el, attribute, dataFrom, dataTo, currentValue) {
-  var attributeSplit = attribute.split('.');
-  var coerceSchema;
-  var component;
-  var componentAttrName;
-  var componentName;
-  var from = {};
-  var partialSetAttribute;
-  var to = {};
-
-  if (attributeSplit.length === 2) {
-    getForComponentAttribute();
-  } else if (dataTo && isCoordinate(dataTo)) {
-    getForCoordinateComponent();
-  } else if (['true', 'false'].indexOf(dataTo) !== -1) {
-    getForBoolean();
-  } else {
-    getForNumber();
-  }
-  return {
-    from: from,
-    partialSetAttribute: partialSetAttribute,
-    to: to
-  };
-
-  /**
-   * Animating a component that has multiple attributes (e.g., geometry.width).
-   */
-  function getForComponentAttribute () {
-    componentName = attributeSplit[0];
-    componentAttrName = attributeSplit[1];
-    component = el.components[componentName];
-    if (!component) {
-      el.setAttribute(componentName, '');
-      component = el.components[componentName];
-    }
-    coerceSchema = component.schema;
-    if (dataFrom === undefined) {  // dataFrom can be 0.
-      from[attribute] = el.getComputedAttribute(componentName)[componentAttrName];
-    } else {
-      from[attribute] = dataFrom;
-    }
-    from[attribute] = coerce(from[attribute], coerceSchema, componentAttrName);
-    to[attribute] = coerce(dataTo, coerceSchema, componentAttrName);
-    partialSetAttribute = function (value) {
-      el.setAttribute(componentName, componentAttrName, value[attribute]);
-    };
-  }
-
-  /**
-   * Animating a component that is an XYZ coordinate (e.g., position).
-   * Will be tweening {x, y, z} all at once.
-   */
-  function getForCoordinateComponent () {
-    from = dataFrom ? coordinates.parse(dataFrom) : currentValue;
-    to = coordinates.parse(dataTo);
-    partialSetAttribute = function (value) {
-      el.setAttribute(attribute, value);
-    };
-  }
-
-  /**
-   * Animation a boolean (e.g., visible).
-   * Have to convert from boolean to an integer (0 is false, > 0 is true) for tween.
-   */
-  function getForBoolean () {
-    if (dataFrom === undefined) {
-      from[attribute] = false;
-    } else {
-      from[attribute] = strToBool(dataFrom);
-    }
-    from[attribute] = boolToNum(from[attribute]);
-    to[attribute] = boolToNum(strToBool(dataTo));
-    partialSetAttribute = function (value) {
-      el.setAttribute(attribute, !!value[attribute]);
-    };
-  }
-
-  /**
-   * Animating a numbered attribute (e.g., opacity).
-   */
-  function getForNumber () {
-    if (dataFrom === undefined) {  // dataFrom can be 0.
-      from[attribute] = parseFloat(el.getAttribute(attribute));
-    } else {
-      from[attribute] = parseFloat(dataFrom);
-    }
-    to[attribute] = parseFloat(dataTo);
-    partialSetAttribute = function (value) {
-      el.setAttribute(attribute, value[attribute]);
-    };
-  }
-}
-module.exports.getAnimationValues = getAnimationValues;
-
-/**
- * Converts string to bool.
- *
- * @param {string} str - `true` or `false`.
- * @returns {bool}
- */
-function strToBool (str) {
-  if (str === 'true') { return true; }
-  return false;
-}
-
-/**
- * Converts boolean to number.
- *
- * @param {bool}
- * @returns {number}
- */
-function boolToNum (bool) {
-  return bool ? 1 : 0;
-}
-
-},{"../constants/animation":77,"../utils/":91,"./a-node":83,"./a-register-element":84,"tween.js":57}],79:[function(require,module,exports){
-/* global HTMLElement */
-var re = require('./a-register-element');
-var utils = require('../utils/');
-
-var isNode = re.isNode;
-var registerElement = re.registerElement;
-
-module.exports = registerElement(
-  'a-assets',
-  {
-    prototype: Object.create(
-      HTMLElement.prototype,
-      {
-        attachedCallback: {
-          value: function () {
-            this.attachEventListeners();
-          }
-        },
-
-        attachEventListeners: {
-          value: function () {
-            var self = this;
-            var assetLoaded = this.assetLoaded.bind(this);
-            this.assetsPending = 0;
-            var children = this.querySelectorAll('*');
-            Array.prototype.slice.call(children).forEach(countElement);
-
-            if (!this.assetsPending) {
-              assetLoaded();
-            }
-
-            function countElement (node) {
-              if (!isNode(node)) { return; }
-              if (!node.hasLoaded) {
-                attachEventListener(node);
-                self.assetsPending++;
-              }
-            }
-
-            function attachEventListener (node) {
-              node.addEventListener('loaded', assetLoaded);
-            }
-          }
-        },
-
-        assetLoaded: {
-          value: function () {
-            this.assetsPending--;
-            if (this.assetsPending <= 0) {
-              this.load();
-            }
-          }
-        },
-
-        load: {
-          value: function () {
-            // To prevent emitting the loaded event more than once.
-            if (this.hasLoaded) { return; }
-            this.hasLoaded = true;
-            var data = { bubbles: false, detail: {} };
-            utils.fireEvent(this, 'loaded', data);
-          }
-        }
-      }
-    )
-  }
-);
-
-},{"../utils/":91,"./a-register-element":84}],80:[function(require,module,exports){
-/* global HTMLElement */
-var debug = require('../utils/debug');
-var registerElement = require('./a-register-element').registerElement;
-
-var warn = debug('core:cubemap:warn');
-
-/**
- * Cubemap element that handles validation and exposes list of URLs.
- * Does not listen to updates.
- */
-module.exports = registerElement('a-cubemap', {
-  prototype: Object.create(HTMLElement.prototype, {
-    /**
-     * Calculates this.srcs.
-     */
-    attachedCallback: {
-      value: function () {
-        this.srcs = this.validate();
-      },
-      writable: window.debug
-    },
-
-    /**
-     * Checks for exactly six elements with [src].
-     * Does not check explicitly for <img>s in case user does not want
-     * prefetching.
-     *
-     * @returns {Array|null} - six URLs if valid, else null.
-     */
-    validate: {
-      value: function () {
-        var elements = this.querySelectorAll('[src]');
-        var i;
-        var srcs = [];
-        if (elements.length === 6) {
-          for (i = 0; i < elements.length; i++) {
-            srcs.push(elements[i].getAttribute('src'));
-          }
-          return srcs;
-        }
-        // Else if there are not six elements, throw a warning.
-        warn(
-          '<a-cubemap> did not contain exactly six elements each with a ' +
-          '`src` attribute.');
-      },
-      writable: window.debug
-    }
-  })
-});
-
-},{"../utils/debug":90,"./a-register-element":84}],81:[function(require,module,exports){
-/* global HTMLElement */
-var ANode = require('./a-node');
-var components = require('./component').components;
-var debug = require('../utils/debug');
-var re = require('./a-register-element');
-var THREE = require('../../lib/three');
-
-var isNode = re.isNode;
-var log = debug('core:a-entity');
-var error = debug('core:a-entity:error');
-var registerElement = re.registerElement;
-
-/**
- * Entity element definition.
- * Entities represent all elements that are part of the scene, and always have
- * a position, rotation, and scale.
- * In the entity-component system, entities are just a container of components.
- *
- * For convenience of inheriting components, the scene element inherits from
- * this prototype. When necessary, it differentiates itself by setting
- * `this.isScene`.
- *
- * @namespace Entity
- * @member {object} components - entity's currently initialized components.
- * @member {object} object3D - three.js object.
- * @member {array} states
- */
-var proto = {
-  defaults: {
-    value: {
-      position: '',
-      rotation: '',
-      scale: '',
-      visible: ''
-    }
-  },
-
-  createdCallback: {
-    value: function () {
-      this.states = [];
-      this.components = {};
-      this.object3D = new THREE.Mesh();
-    }
-  },
-
-  attributeChangedCallback: {
-    value: function (attr, oldVal, newVal) {
-      this.setEntityAttribute(attr, oldVal, newVal);
-    }
-  },
-
-  attachedCallback: {
-    value: function () {
-      this.addToParent();
-      this.load();
-    }
-  },
-
-  /**
-   * Tell parent to remove this element's object3D from its object3D.
-   * Do not call on scene element because that will cause a call to
-   * document.body.remove().
-   */
-  detachedCallback: {
-    value: function () {
-      if (!this.parentEl || this.isScene) { return; }
-      this.removeComponents();
-      this.parentEl.remove(this);
-    }
-  },
-
-  applyMixin: {
-    value: function (attr) {
-      var attrValue = this.getAttribute(attr);
-      if (!attr) {
-        this.updateComponents();
-        return;
-      }
-      this.updateComponent(attr, attrValue);
-    }
-  },
-
-  mapStateMixins: {
-    value: function (state, op) {
-      var mixins = this.getAttribute('mixin');
-      var mixinIds;
-      if (!mixins) { return; }
-      mixinIds = mixins.split(' ');
-      mixinIds.forEach(function (id) {
-        var mixinId = id + '-' + state;
-        op(mixinId);
-      });
-      this.updateComponents();
-    }
-  },
-
-  updateStateMixins: {
-    value: function (newMixins, oldMixins) {
-      var self = this;
-      oldMixins = oldMixins || '';
-      var newMixinsIds = newMixins.split(' ');
-      var oldMixinsIds = oldMixins ? oldMixins.split(' ') : [];
-      // The list of mixins that might have been removed on update
-      var diff = oldMixinsIds.filter(function (i) { return newMixinsIds.indexOf(i) < 0; });
-      // Remove the mixins that are gone on update
-      diff.forEach(function (mixinId) {
-        var forEach = Array.prototype.forEach;
-        // State Mixins
-        var stateMixinsEls = document.querySelectorAll('[id^=' + mixinId + '-]');
-        var stateMixinIds = [];
-        forEach.call(stateMixinsEls, function (el) { stateMixinIds.push(el.id); });
-        stateMixinIds.forEach(self.unregisterMixin.bind(self));
-      });
-      this.states.forEach(function (state) {
-        newMixinsIds.forEach(function (id) {
-          var mixinId = id + '-' + state;
-          self.registerMixin(mixinId);
-        });
-      });
-    }
-  },
-
-  add: {
-    value: function (el) {
-      if (!el.object3D) {
-        error("Trying to add an object3D that doesn't exist");
-      }
-      this.object3D.add(el.object3D);
-    }
-  },
-
-  addToParent: {
-    value: function () {
-      var self = this;
-      var parent = this.parentEl = this.parentNode;
-      var attachedToParent = this.attachedToParent;
-      if (!parent || attachedToParent) { return; }
-      if (isNode(parent)) {
-        attach();
-        return;
-      }
-      // If the parent isn't an `ANode` but eventually it will be
-      // when a templated element is created, we want to attach
-      // this element to the parent then.
-      parent.addEventListener('nodeready', attach);
-      function attach () {
-        // To prevent an object to attach itself multiple times to the parent.
-        self.attachedToParent = true;
-        if (parent.add) {
-          parent.add(self);
-        }
-      }
-    }
-  },
-
-  load: {
-    value: function () {
-      // To prevent calling load more than once
-      if (this.hasLoaded) { return; }
-      // Handle to the associated DOM element
-      this.object3D.el = this;
-      // It attaches itself to the threejs parent object3D
-      this.addToParent();
-      // Components initialization
-      this.updateComponents();
-      // Call the parent class
-      ANode.prototype.load.call(this);
-    },
-    writable: window.debug
-  },
-
-  remove: {
-    value: function (el) {
-      this.object3D.remove(el.object3D);
-    }
-  },
-
-  /**
-   * Check if a component is defined for an entity, including defaults and mixins.
-   *
-   * @param {string} name - Component name.
-   */
-  isComponentDefined: {
-    value: function (name) {
-      // If the defaults contain the component
-      var inDefaults = this.defaults[name];
-      // If the element contains the component
-      var inAttribute = this.hasAttribute(name);
-      if (inDefaults !== undefined || inAttribute) { return true; }
-      return this.isComponentMixedIn(name);
-    }
-  },
-
-  isComponentMixedIn: {
-    value: function (name) {
-      var i;
-      var inMixin = false;
-      var mixinEls = this.mixinEls;
-     // If any of the mixins contains the component
-      for (i = 0; i < mixinEls.length; ++i) {
-        inMixin = mixinEls[i].hasAttribute(name);
-        if (inMixin) { break; }
-      }
-      return inMixin;
-    }
-  },
-
-  initComponent: {
-    value: function (name, isDependency) {
-      var isComponentDefined;
-      // If it's not a component name or
-      // If the component is already initialized
-      if (!components[name] || this.components[name]) { return; }
-      isComponentDefined = this.isComponentDefined(name);
-      // If the component is not defined for the element
-      if (!isComponentDefined && !isDependency) { return; }
-      this.initComponentDependencies(name);
-      // If a component it's a dependency of another but it's not defined
-      // on the attribute, mixins or entity defaults
-      // we have to add it.
-      if (isDependency && !isComponentDefined) {
-        this.setAttribute(name, '');
-      } else {
-        this.components[name] = new components[name].Component(this);
-      }
-      log('Component initialized: %s', name);
-    }
-  },
-
-  initComponentDependencies: {
-    value: function (name) {
-      var self = this;
-      var component = components[name];
-      var dependencies;
-      // If the component doesn't exist
-      if (!component) { return; }
-      dependencies = components[name].dependencies;
-      if (!dependencies) { return; }
-      dependencies.forEach(function (component) {
-        self.initComponent(component, true);
-      });
-    }
-  },
-
-  removeComponents: {
-    value: function () {
-      var self = this;
-      var entityComponents = Object.keys(this.components);
-      entityComponents.forEach(removeComponent);
-      function removeComponent (name) {
-        self.components[name].remove();
-        delete self.components[name];
-      }
-    }
-  },
-
-  updateComponents: {
-    value: function () {
-      var self = this;
-      var entityComponents = Object.keys(components);
-      // Updates components
-      entityComponents.forEach(updateComponent);
-      function updateComponent (name) {
-        var elValue = self.getAttribute(name);
-        self.updateComponent(name, elValue);
-      }
-    }
-  },
-
-  /**
-   * Initialize, update, or remove a single component.
-   *
-   * When initializing, we set the component on `this.components`.
-   *
-   * @param {string} name - Component name.
-   * @param {object} newData - The new attributes assigned to the component
-   */
-  updateComponent: {
-    value: function (name, newData) {
-      var component = this.components[name];
-      var isDefault = name in this.defaults;
-      var isMixedIn = this.isComponentMixedIn(name);
-      if (component) {
-        // Attribute was removed. Remove component.
-        // 1. If the component is not defined in the defaults,
-        // mixins or element attribute
-        // 2. If the new data is null, it's not a default
-        // component and the component it's not defined via
-        // mixins
-        if (!this.isComponentDefined(name) ||
-            newData === null && !isDefault && !isMixedIn) {
-          component.remove();
-          delete this.components[name];
-          return;
-        }
-        if (typeof newData === 'string') {
-          newData = component.parse(newData);
-        }
-        // Component already initialized. Update component.
-        // TODO: update component attribute more granularly.
-        component.updateAttributes(newData);
-        return;
-      }
-      // Component not yet initialized. Initialize component.
-      this.initComponent(name);
-    }
-  },
-
-  /**
-   * If `attr` is a component name and `componentAttr` is not defined, removeAttribute removes
-   * the entire component from the entity.
-   *
-   * If `attr` is a component name and `componentAttr` is defined, removeAttribute removes a
-   * single attribute from the component.
-   *
-   * @param {string} attr - Attribute name, which could also be a component name.
-   * @param {string} componentAttr - Component attribute name.
-   */
-  removeAttribute: {
-    value: function (attr, componentAttr) {
-      var component = components[attr];
-      if (component) {
-        if (componentAttr) {
-          this.setAttribute(attr, componentAttr, undefined);
-        } else {
-          this.setEntityAttribute(attr, undefined, null);
-        }
-      }
-      HTMLElement.prototype.removeAttribute.call(this, attr);
-    }
-  },
-
-  /**
-   * Deals with updates on entity-specific attributes (i.e., components and mixins).
-   *
-   * @param {string} attr
-   * @param {string} oldVal
-   * @param {string|object} newVal
-   */
-  setEntityAttribute: {
-    value: function (attr, oldVal, newVal) {
-      var component = components[attr];
-      oldVal = oldVal || this.getAttribute(attr);
-      // When creating objects programatically and setting attributes, the object is not part
-      // of the scene until is inserted into the DOM.
-      if (!this.hasLoaded) { return; }
-      if (attr === 'mixin') {
-        this.updateStateMixins(newVal, oldVal);
-        this.updateComponents();
-        return;
-      }
-      if (component) { this.updateComponent(attr, newVal); }
-    }
-  },
-
-  /**
-   * If attribute is a component, setAttribute will apply the value to the
-   * existing component data, not replace it. Examples:
-   *
-   * Examples:
-   *
-   * setAttribute('id', 'my-element');
-   * setAttribute('material', { color: 'crimson' });
-   * setAttribute('material', 'color', 'crimson');
-   *
-   * @param {string} attr - Attribute name. setAttribute will initialize or update
-   *        a component if the name corresponds to a registered component.
-   * @param {string|object} value - If a string, setAttribute will update the attribute or.
-   *        component. If an object, the value will be mixed into the component.
-   * @param {string} componentAttrValue - If defined, `value` will act as the attribute
-   *        name and setAttribute will only set a single component attribute.
-   */
-  setAttribute: {
-    value: function (attr, value, componentAttrValue) {
-      var self = this;
-      var component = components[attr];
-      var partialComponentData;
-      value = value === undefined ? '' : value;
-      var valueStr = value;
-      var oldValue;
-      if (component) {
-        if (typeof value === 'string' && componentAttrValue !== undefined) {
-          // Update currently-defined component data with the new attribute value.
-          partialComponentData = self.getAttribute(attr) || {};
-          partialComponentData[value] = componentAttrValue;
-          value = partialComponentData;
-        }
-        valueStr = component.stringify(value);
-      }
-
-      oldValue = this.getAttribute(attr);
-      ANode.prototype.setAttribute.call(self, attr, valueStr);
-      self.setEntityAttribute(attr, oldValue, value);
-    },
-    writable: window.debug
-  },
-
-  /**
-   * If `attr` is a component, returns JUST the component data specified in the HTML
-   * by parsing the style-like string into an object. Like a partial version of
-   * `getComputedAttribute` as returned component data does not include applied mixins or
-   * defaults.
-   *
-   * If `attr` is not a component, fall back to HTML getAttribute.
-   *
-   * @param {string} attr
-   * @returns {object|string} Object if component, else string.
-   */
-  getAttribute: {
-    value: function (attr) {
-      var component = components[attr];
-      var value = HTMLElement.prototype.getAttribute.call(this, attr);
-      if (!component || typeof value !== 'string') { return value; }
-      return component.parse(value);
-    },
-    writable: window.debug
-  },
-
-  /**
-   * If `attr` is a component, returns ALL component data including applied mixins and
-   * defaults.
-   *
-   * If `attr` is not a component, fall back to HTML getAttribute.
-   *
-   * @param {string} attr
-   * @returns {object|string} Object if component, else string.
-   */
-  getComputedAttribute: {
-    value: function (attr) {
-      var component = this.components[attr];
-      if (component) { return component.getData(); }
-      return HTMLElement.prototype.getAttribute.call(this, attr);
-    }
-  },
-
-  addState: {
-    value: function (state) {
-      if (this.is(state)) { return; }
-      this.states.push(state);
-      this.mapStateMixins(state, this.registerMixin.bind(this));
-      this.emit('stateadded', {state: state});
-    }
-  },
-
-  removeState: {
-    value: function (state) {
-      var stateIndex = this.is(state);
-      if (stateIndex === false) { return; }
-      this.states.splice(stateIndex, 1);
-      this.mapStateMixins(state, this.unregisterMixin.bind(this));
-      this.emit('stateremoved', {state: state});
-    }
-  },
-
-  /**
-   * Checks if the element is in a given state. e.g. el.is('alive');
-   * @type {string} state - Name of the state we want to check
-   */
-  is: {
-    value: function (state) {
-      var is = false;
-      this.states.forEach(function (elState, index) {
-        if (elState === state) { is = index; }
-      });
-      return is;
-    }
-  }
-};
-
-module.exports = registerElement('a-entity', {
-  prototype: Object.create(ANode.prototype, proto)
-});
-
-},{"../../lib/three":36,"../utils/debug":90,"./a-node":83,"./a-register-element":84,"./component":86}],82:[function(require,module,exports){
-/* global HTMLElement */
-var AComponents = require('./component').components;
-var ANode = require('./a-node');
-var registerElement = require('./a-register-element').registerElement;
-
-module.exports = registerElement(
-  'a-mixin',
-  {
-    prototype: Object.create(
-      ANode.prototype,
-      {
-        attachedCallback: {
-          value: function () {
-            this.load();
-          },
-          writable: window.debug
-        },
-
-        setAttribute: {
-          value: function (attr, value) {
-            var component = AComponents[attr];
-            if (component && typeof value === 'object') {
-              value = component.stringify(value);
-            }
-            HTMLElement.prototype.setAttribute.call(this, attr, value);
-          },
-          writable: window.debug
-        },
-
-        getAttribute: {
-          value: function (attr) {
-            var component = AComponents[attr];
-            var value = HTMLElement.prototype.getAttribute.call(this, attr);
-            if (!component || typeof value !== 'string') { return value; }
-            return component.parse(value);
-          },
-          writable: window.debug
-        }
-      }
-    )
-  }
-);
-
-},{"./a-node":83,"./a-register-element":84,"./component":86}],83:[function(require,module,exports){
-/* global HTMLElement, MutationObserver */
-var registerElement = require('./a-register-element').registerElement;
-var utils = require('../utils/');
-
-/**
- * Base class for A-Frame that manages loading of objects.
- */
-module.exports = registerElement('a-node', {
-  prototype: Object.create(HTMLElement.prototype, {
-    createdCallback: {
-      value: function () {
-        this.isNode = true;
-        this.mixinEls = [];
-        this.mixinObservers = {};
-      }
-    },
-
-    attachedCallback: {
-      value: function () {
-        var mixins = this.getAttribute('mixin');
-        this.sceneEl = document.querySelector('a-scene');
-        this.emit('nodeready', {}, false);
-        if (mixins) { this.updateMixins(mixins); }
-      }
-    },
-
-    detachedCallback: {
-      value: function () { /* no-op */ }
-    },
-
-    attributeChangedCallback: {
-      value: function (attr, oldVal, newVal) {
-        if (attr === 'mixin') { this.updateMixins(newVal, oldVal); }
-      }
-    },
-
-    load: {
-      value: function () {
-        // To prevent emmitting the loaded event more than once
-        if (this.hasLoaded) { return; }
-        this.hasLoaded = true;
-        this.emit('loaded', {}, false);
-      }
-    },
-
-    updateMixins: {
-      value: function (newMixins, oldMixins) {
-        var newMixinsIds = newMixins.split(' ');
-        var oldMixinsIds = oldMixins ? oldMixins.split(' ') : [];
-        // To determine what listeners will be removed
-        var diff = oldMixinsIds.filter(function (i) { return newMixinsIds.indexOf(i) < 0; });
-        this.mixinEls = [];
-        diff.forEach(this.unregisterMixin.bind(this));
-        newMixinsIds.forEach(this.registerMixin.bind(this));
-      }
-    },
-
-    addMixin: {
-      value: function (mixinId) {
-        var mixins = this.getAttribute('mixin');
-        var mixinIds = mixins.split(' ');
-        var i;
-        for (i = 0; i < mixinIds.length; ++i) {
-          if (mixinIds[i] === mixinId) { return; }
-        }
-        mixinIds.push(mixinId);
-        this.setAttribute('mixin', mixinIds.join(' '));
-      }
-    },
-
-    removeMixin: {
-      value: function (mixinId) {
-        var mixins = this.getAttribute('mixin');
-        var mixinIds = mixins.split(' ');
-        var i;
-        for (i = 0; i < mixinIds.length; ++i) {
-          if (mixinIds[i] === mixinId) {
-            mixinIds.splice(i, 1);
-            this.setAttribute('mixin', mixinIds.join(' '));
-            return;
-          }
-        }
-      }
-    },
-
-    registerMixin: {
-      value: function (mixinId) {
-        var mixinEl = document.querySelector('a-mixin#' + mixinId);
-        if (!mixinEl) { return; }
-        this.attachMixinListener(mixinEl);
-        this.mixinEls.push(mixinEl);
-      }
-    },
-
-    setAttribute: {
-      value: function (attr, newValue) {
-        if (attr === 'mixin') { this.updateMixins(newValue); }
-        HTMLElement.prototype.setAttribute.call(this, attr, newValue);
-      }
-    },
-
-    unregisterMixin: {
-      value: function (mixinId) {
-        var mixinEls = this.mixinEls;
-        var mixinEl;
-        var i;
-        for (i = 0; i < mixinEls.length; ++i) {
-          mixinEl = mixinEls[i];
-          if (mixinId === mixinEl.id) {
-            mixinEls.splice(i, 1);
-            break;
-          }
-        }
-        this.removeMixinListener(mixinId);
-      }
-    },
-
-    removeMixinListener: {
-      value: function (mixinId) {
-        var observer = this.mixinObservers[mixinId];
-        if (!observer) { return; }
-        observer.disconnect();
-        this.mixinObservers[mixinId] = null;
-      }
-    },
-
-    attachMixinListener: {
-      value: function (mixinEl) {
-        var self = this;
-        var mixinId = mixinEl.id;
-        var currentObserver = this.mixinObservers[mixinId];
-        if (!mixinEl) { return; }
-        if (currentObserver) { return; }
-        var observer = new MutationObserver(function (mutations) {
-          var attr = mutations[0].attributeName;
-          self.applyMixin(attr);
-        });
-        var config = { attributes: true };
-        observer.observe(mixinEl, config);
-        this.mixinObservers[mixinId] = observer;
-      }
-    },
-
-    applyMixin: {
-      value: function () { /* no-op */ }
-    },
-
-    /**
-     * Emits a DOM event.
-     *
-     * @param {String} name
-     *   Name of event (use a space-delimited string for multiple events).
-     * @param {Object=} [detail={}]
-     *   Custom data to pass as `detail` to the event.
-     * @param {Boolean=} [bubbles=true]
-     *   Whether the event should bubble.
-     */
-    emit: {
-      value: function (name, detail, bubbles) {
-        var self = this;
-        detail = detail || {};
-        if (bubbles === undefined) { bubbles = true; }
-        var data = { bubbles: !!bubbles, detail: detail };
-        return name.split(' ').map(function (eventName) {
-          return utils.fireEvent(self, eventName, data);
-        });
-      }
-    },
-
-    /**
-     * Returns a closure that emits a DOM event.
-     *
-     * @param {String} name
-     *   Name of event (use a space-delimited string for multiple events).
-     * @param {Object} detail
-     *   Custom data (optional) to pass as `detail` if the event is to
-     *   be a `CustomEvent`.
-     * @param {Boolean} bubbles
-     *   Whether the event should be bubble.
-     */
-    emitter: {
-      value: function (name, detail, bubbles) {
-        var self = this;
-        return function () {
-          self.emit(name, detail, bubbles);
-        };
-      }
-    }
-  })
-});
-
-},{"../utils/":91,"./a-register-element":84}],84:[function(require,module,exports){
-// Polyfill `document.registerElement`.
-require('document-register-element');
-
-/*
- ------------------------------------------------------------
- ------------- WARNING WARNING WARNING WARNING --------------
- ------------------------------------------------------------
-
- This module wraps registerElement to deal with
- components that inherit from `ANode` and `AEntity`.
- It's a pass through in any other case.
-
- It wraps some of the prototype methods
- of the created element to make sure that the corresponding
- functions in the base classes (`AEntity` and `ANode`) are also
- invoked. The method in the base class is always called before the
- one in the derived object.
-
-*/
-var registerElement = document.registerElement;
-
-var knownTags = module.exports.knownTags = {};
-
-var addTagName = function (tagName) {
-  knownTags[tagName.toLowerCase()] = true;
-};
-
-/**
- * Returns whether the element type is one of our known registered ones
- *
- * @param   {string} node The name of the tag to register
- * @returns {boolean} Whether the tag name matches that of our registered
- *                    custom elements
- */
-module.exports.isNode = function (node) {
-  return node.tagName.toLowerCase() in knownTags || node.isNode;
-};
-
-/**
- * @param   {string} tagName The name of the tag to register
- * @param   {object} obj The prototype of the new element
- * @returns {object} The prototype of the new element
- */
-module.exports.registerElement = document.registerElement = function (tagName, obj) {
-  var proto = Object.getPrototypeOf(obj.prototype);
-  var newObj = obj;
-  var isANode = ANode && proto === ANode.prototype;
-  var isAEntity = AEntity && proto === AEntity.prototype;
-
-  if (isANode || isAEntity) { addTagName(tagName); }
-
-  // Does the element inherit from `ANode`?
-  if (isANode) {
-    newObj = wrapANodeMethods(obj.prototype);
-    newObj = {prototype: Object.create(proto, newObj)};
-  }
-
-  // Does the element inherit from `AEntity`?
-  if (isAEntity) {
-    newObj = wrapAEntityMethods(obj.prototype);
-    newObj = {prototype: Object.create(proto, newObj)};
-  }
-
-  return registerElement.call(document, tagName, newObj);
-};
-
-/**
- * This wraps some of the obj methods to call those on `ANode` base clase.
- * @param  {object} obj The objects that contains the methods that will be wrapped.
- * @return {object} An object with the same properties as the input parameter but
- * with some of methods wrapped.
- */
-function wrapANodeMethods (obj) {
-  var newObj = {};
-  var ANodeMethods = [
-    'attachedCallback',
-    'attributeChangedCallback',
-    'createdCallback'
-  ];
-  wrapMethods(newObj, ANodeMethods, obj, ANode.prototype);
-  copyProperties(obj, newObj);
-  return newObj;
-}
-
-/**
- * This wraps some of the obj methods to call those on `AEntity` base class.
- * @param  {object} obj The objects that contains the methods that will be wrapped.
- * @return {object} An object with the same properties as the input parameter but
- * with some of methods wrapped.
- */
-function wrapAEntityMethods (obj) {
-  var newObj = {};
-  var ANodeMethods = [
-    'attachedCallback',
-    'attributeChangedCallback',
-    'createdCallback'
-  ];
-  var AEntityMethods = [
-    'attributeChangedCallback',
-    'attachedCallback',
-    'createdCallback',
-    'detachedCallback'
-  ];
-  wrapMethods(newObj, ANodeMethods, obj, ANode.prototype);
-  wrapMethods(newObj, AEntityMethods, obj, AEntity.prototype);
-  // Copies the remaining properties into the new object
-  copyProperties(obj, newObj);
-  return newObj;
-}
-
-/**
- * Wraps a list a methods to ensure that those in the base class are called through the derived one.
- * @param  {object} targetObj Object that will contain the wrapped methods
- * @param  {array} methodList List of methods from the derivedObj that will be wrapped
- * @param  {object} derivedObject Object that inherits from the baseObj
- * @param  {object} baseObj Object that derivedObj inherits from
- * @return {undefined}
- */
-function wrapMethods (targetObj, methodList, derivedObj, baseObj) {
-  methodList.forEach(function (methodName) {
-    wrapMethod(targetObj, methodName, derivedObj, baseObj);
-  });
-}
-
-/**
- * Wraps one method to ensure that the one in the base class is called before the one
- * in the derived one
- * @param  {object} obj Object that will contain the wrapped method
- * @param  {string} methodName The name of the method that will be wrapped
- * @param  {object} derivedObject Object that inherits from the baseObj
- * @param  {object} baseObj Object that derivedObj inherits from
- * @return {undefined}
- */
-function wrapMethod (obj, methodName, derivedObj, baseObj) {
-  var derivedMethod = derivedObj[methodName];
-  var baseMethod = baseObj[methodName];
-  if (!derivedMethod || !baseMethod) { return; }
-  // The derived class doesn't override the one in the base one
-  if (derivedMethod === baseMethod) { return; }
-  // Wrapper
-  // The base method is called before the one in the derived class
-  var wrapperMethod = function () {
-    baseMethod.apply(this, arguments);
-    return derivedMethod.apply(this, arguments);
-  };
-  obj[methodName] = {value: wrapperMethod, writable: window.debug};
-}
-
-/**
- * It copies the properties from source to destination object
- * if they don't exist already
- * @param  {object} source The object where properties are copied from
- * @param  {type} destination The object where properties are copied to
- * @return {undefined}
- */
-function copyProperties (source, destination) {
-  var props = Object.getOwnPropertyNames(source);
-  props.forEach(function (prop) {
-    var desc;
-    if (!destination[prop]) {
-      desc = Object.getOwnPropertyDescriptor(source, prop);
-      destination[prop] = {value: source[prop], writable: desc.writable};
-    }
-  });
-}
-
-var ANode = require('./a-node');
-var AEntity = require('./a-entity');
-
-},{"./a-entity":81,"./a-node":83,"document-register-element":48}],85:[function(require,module,exports){
-/* global MessageChannel, Promise */
-var re = require('./a-register-element');
-var RStats = require('../../lib/vendor/rStats');
-var THREE = require('../../lib/three');
-var TWEEN = require('tween.js');
-var utils = require('../utils/');
-var AEntity = require('./a-entity');
-var Wakelock = require('../../lib/vendor/wakelock/wakelock');
-
-var dummyDolly = new THREE.Object3D();
-var controls = new THREE.VRControls(dummyDolly);
-var isNode = re.isNode;
-var DEFAULT_CAMERA_ATTR = 'data-aframe-default-camera';
-var DEFAULT_LIGHT_ATTR = 'data-aframe-default-light';
-var HIDDEN_CLASS = 'a-hidden';
-var registerElement = re.registerElement;
-var ENTER_VR_CLASS = 'a-enter-vr';
-var ENTER_VR_NO_HEADSET = 'data-a-enter-vr-no-headset';
-var ENTER_VR_NO_WEBVR = 'data-a-enter-vr-no-webvr';
-var ENTER_VR_BTN_CLASS = 'a-enter-vr-button';
-var ENTER_VR_MODAL_CLASS = 'a-enter-vr-modal';
-var ORIENTATION_MODAL_CLASS = 'a-orientation-modal';
-var isMobile = utils.isMobile();
-
-/**
- * Scene element, holds all entities.
- *
- * @member {number} animationFrameID
- * @member {array} behaviors - Component instances that have registered themselves to be
-           updated on every tick.
- * @member {object} cameraEl - Set the entity with a camera component.
- * @member {object} canvas
- * @member {bool} defaultLightsEnabled - false if user has not added lights.
- * @member {Element} enterVREl
- * @member {bool} insideIframe
- * @member {bool} insideLoader
- * @member {bool} isScene - Differentiates this as a scene entity as opposed
-           to other `AEntity`s.
- * @member {bool} isMobile - Whether browser is mobile (via UA detection).
- * @member {object} object3D - The root three.js Scene object.
- * @member {object} monoRenderer
- * @member {number} pendingElements - Number of elements currently waiting to
- *         initialize before beginning rendering.
- * @member {object} renderer
- * @member {bool} renderLoopStarted
- * @member {object} stats
- * @member {object} stereoRenderer
- * @member {object} wakelock
- */
-var AScene = module.exports = registerElement('a-scene', {
-  prototype: Object.create(AEntity.prototype, {
-    createdCallback: {
-      value: function () {
-        this.behaviors = [];
-        this.defaultLightsEnabled = true;
-        this.enterVREl = null;
-        this.insideIframe = window.top !== window.self;
-        this.insideLoader = false;
-        this.isScene = true;
-        this.materials = {};
-        this.object3D = AScene.scene || new THREE.Scene();
-
-        AScene.scene = this.object3D;
-      }
-    },
-
-    attachedCallback: {
-      value: function () {
-        this.isMobile = isMobile;
-        var resizeCanvas = this.resizeCanvas.bind(this);
-
-        if (isMobile) {
-          injectMetaTags();
-          this.wakelock = new Wakelock();
-        }
-
-        this.setupStats();
-        this.setupCanvas();
-        this.setupKeyboardShortcuts();
-        this.setupRenderer();
-        this.setupDefaultLights();
-        this.attachEventListeners();
-        this.attachFullscreenListeners();
-        this.attachOrientationListeners();
-
-        // For Chrome (https://github.com/aframevr/aframe-core/issues/321).
-        window.addEventListener('load', resizeCanvas);
-      },
-      writable: window.debug
-    },
-
-    /**
-     * Handle stats.
-     * TODO: move stats to a component.
-     */
-    attributeChangedCallback: {
-      value: function (attr, oldVal, newVal) {
-        if (oldVal === newVal) { return; }
-        if (attr === 'stats') { this.setupStats(); }
-      }
-    },
-
-    /**
-     * Shuts down scene on detach.
-     */
-    detachedCallback: {
-      value: function () {
-        window.cancelAnimationFrame(this.animationFrameID);
-        this.animationFrameID = null;
-      }
-    },
-
-    /**
-     * @param {object} behavior - Generally a component. Must implement a .update() method to
-     *        be called on every tick.
-     */
-    addBehavior: {
-      value: function (behavior) {
-        this.behaviors.push(behavior);
-      }
-    },
-
-    /**
-     * Attaches event listeners to all assets and entities and wait for them
-     * all to load before kicking things off.
-     */
-    attachEventListeners: {
-      value: function () {
-        var self = this;
-        var elementLoadedCallback = this.elementLoadedCallback.bind(this);
-        this.pendingElements = 0;
-        var assets = document.querySelector('a-assets');
-        if (assets && !assets.hasLoaded) {
-          this.pendingElements++;
-          attachEventListener(assets);
-        }
-
-        var children = this.querySelectorAll('*');
-        Array.prototype.slice.call(children).forEach(countElement);
-
-        function countElement (node) {
-          if (!isNode(node)) { return; }
-          self.pendingElements++;
-          if (!node.hasLoaded) {
-            attachEventListener(node);
-          } else {
-            elementLoadedCallback(node);
-          }
-        }
-
-        function attachEventListener (node) {
-          node.addEventListener('loaded', elementLoadedCallback);
-        }
-      }
-    },
-
-    attachOrientationListeners: {
-      value: function (e) {
-        window.addEventListener('orientationchange', this.showOrientationModal.bind(this));
-      }
-    },
-
-    showOrientationModal: {
-      value: function () {
-        if (!utils.isIOS()) { return; }
-        if (!utils.isLandscape() && this.renderer === this.stereoRenderer) {
-          this.orientationModal.classList.remove(HIDDEN_CLASS);
-        } else {
-          this.orientationModal.classList.add(HIDDEN_CLASS);
-        }
-      }
-    },
-
-    /**
-     * Switch back to mono renderer if no longer in fullscreen VR.
-     * Lock to landscape orientation on mobile when fullscreen.
-     */
-    attachFullscreenListeners: {
-      value: function () {
-        function fullscreenChange (e) {
-          var fsElement = document.fullscreenElement ||
-                          document.mozFullScreenElement ||
-                          document.webkitFullscreenElement;
-          // Lock to landscape orientation on mobile.
-          if (fsElement && this.isMobile) {
-            window.screen.orientation.lock('landscape');
-          } else {
-            window.screen.orientation.unlock();
-          }
-          if (!fsElement) {
-            this.showUI();
-            this.setMonoRenderer();
-          }
-          if (this.wakelock) { this.wakelock.release(); }
-        }
-        document.addEventListener('mozfullscreenchange',
-                                  fullscreenChange.bind(this));
-        document.addEventListener('webkitfullscreenchange',
-                                  fullscreenChange.bind(this));
-      }
-    },
-
-    /**
-     * Handles VR and fullscreen behavior for when we are inside an iframe.
-     */
-    attachMessageListeners: {
-      value: function () {
-        var self = this;
-        window.addEventListener('message', function (e) {
-          if (e.data) {
-            switch (e.data.type) {
-              case 'loaderReady': {
-                self.insideLoader = true;
-                self.removeEnterVRButton();
-                break;
-              }
-              case 'fullscreen': {
-                switch (e.data.data) {
-                  // Set renderer with fullscreen VR enter and exit.
-                  case 'enter':
-                    self.setStereoRenderer();
-                    break;
-                  case 'exit':
-                    self.setMonoRenderer();
-                    break;
-                }
-              }
-            }
-          }
-        });
-      }
-    },
-
-    /**
-     * Handler attached to elements to help scene know when to kick off.
-     * Scene waits for all entities to load.
-     */
-    elementLoadedCallback: {
-      value: function () {
-        this.pendingElements--;
-        // Still waiting on elements.
-        if (this.pendingElements > 0) { return; }
-        // Render loop already running.
-        if (this.renderLoopStarted) { return; }
-
-        this.setupLoader();
-        if (!this.cameraEl) {
-          // Add default camera if user has not added one. Wait for it to load.
-          this.setupDefaultCamera();
-          return;
-        }
-        this.resizeCanvas();
-
-        // Kick off render loop.
-        this.render();
-        this.renderLoopStarted = true;
-        this.load();
-        this.checkUrlParameters();
-      }
-    },
-
-    /**
-     * Enters VR when ?mode=vr is specified in the querystring.
-     */
-    checkUrlParameters: {
-      value: function () {
-        var mode = utils.getUrlParameter('mode');
-        if (mode === 'vr') {
-          this.enterVR();
-        }
-
-        var ui = utils.getUrlParameter('ui');
-        if (ui === 'false') {
-          this.hideUI();
-        }
-      }
-    },
-
-    enterVR: {
-      value: function () {
-        this.hideUI();
-        this.setStereoRenderer();
-        this.setFullscreen();
-        this.showOrientationModal();
-      }
-    },
-
-    exitVR: {
-      value: function () {
-        this.showUI();
-        this.setMonoRenderer();
-        this.orientationModal.classList.add(HIDDEN_CLASS);
-      }
-    },
-
-    getCanvasSize: {
-      value: function () {
-        var canvas = this.canvas;
-        if (this.isMobile) {
-          return {
-            height: window.innerHeight,
-            width: window.innerWidth
-          };
-        }
-        canvas.style.width = '100%';
-        canvas.style.height = '100%';
-        return {
-          height: canvas.offsetHeight,
-          width: canvas.offsetWidth
-        };
-      }
-    },
-
-    hideUI: {
-      value: function () {
-        if (this.statsEl) {
-          this.statsEl.classList.add(HIDDEN_CLASS);
-        }
-        if (this.enterVREl) {
-          this.enterVREl.classList.add(HIDDEN_CLASS);
-        }
-      }
-    },
-
-    load: {
-      value: function () {
-        // To prevent emmitting the loaded event more than once
-        // and to prevent triggering loaded if there are still
-        // pending elements to be loaded
-        if (this.hasLoaded || this.pendingElements !== 0) { return; }
-        AEntity.prototype.load.call(this);
-      }
-    },
-
-    /**
-     * Notify scene that light has been added and to remove the default
-     *
-     * @param {object} el - element holding the light component.
-     */
-    registerLight: {
-      value: function (el) {
-        if (this.defaultLightsEnabled &&
-            !el.hasAttribute(DEFAULT_LIGHT_ATTR)) {
-          // User added a light, remove default lights through DOM.
-          var defaultLights = document.querySelectorAll(
-            '[' + DEFAULT_LIGHT_ATTR + ']');
-          for (var i = 0; i < defaultLights.length; i++) {
-            this.removeChild(defaultLights[i]);
-          }
-          this.defaultLightsEnabled = false;
-        }
-      }
-    },
-
-    /**
-     * Keep track of material in case an update trigger is needed (e.g., fog).
-     *
-     * @param {object} material
-     */
-    registerMaterial: {
-      value: function (material) {
-        this.materials[material.uuid] = material;
-      }
-    },
-
-    /**
-     * @param {object} behavior - Generally a component. Has registered itself to behaviors.
-     */
-    removeBehavior: {
-      value: function (behavior) {
-        var behaviors = this.behaviors;
-        var index = behaviors.indexOf(behavior);
-        if (index === -1) { return; }
-        behaviors.splice(index, 1);
-      }
-    },
-
-    removeEnterVR: {
-      value: function () {
-        if (this.enterVREl) {
-          this.enterVREl.parentNode.removeChild(this.enterVRElement);
-        }
-      }
-    },
-
-    resizeCanvas: {
-      value: function () {
-        // It's possible that the camera is not injected yet.
-        if (!this.cameraEl) { return; }
-        var camera = this.cameraEl.components.camera.camera;
-        var size = this.getCanvasSize();
-        // Updates camera
-        camera.aspect = size.width / size.height;
-        camera.updateProjectionMatrix();
-        // Notify the renderer of the size change
-        this.renderer.setSize(size.width, size.height, true);
-      }
-    },
-
-    /**
-     * Manually handles fullscreen for non-VR mobile where the renderer' VR
-     * display is not polyfilled. Also sets wakelock for mobile in the process.
-     *
-     * Desktop just works so use the renderer.setFullScreen in that case.
-     */
-    setFullscreen: {
-      value: function () {
-        var canvas = this.canvas;
-
-        if (!this.isMobile) {
-          this.stereoRenderer.setFullScreen(true);
-          return;
-        }
-
-        if (this.wakelock) { this.wakelock.request(); }
-
-        if (canvas.requestFullscreen) {
-          canvas.requestFullscreen();
-        } else if (canvas.mozRequestFullScreen) {
-          canvas.mozRequestFullScreen();
-        } else if (canvas.webkitRequestFullscreen) {
-          canvas.webkitRequestFullscreen();
-        }
-      }
-    },
-
-    /**
-     * Sets renderer to mono (one eye) and resizes canvas.
-     */
-    setMonoRenderer: {
-      value: function () {
-        this.renderer = this.monoRenderer;
-        this.resizeCanvas();
-      }
-    },
-
-    /**
-     * Sets renderer to stereo (two eyes) and resizes canvas.
-     */
-    setStereoRenderer: {
-      value: function () {
-        this.renderer = this.stereoRenderer;
-        this.resizeCanvas();
-      }
-    },
-
-    setupCanvas: {
-      value: function () {
-        var canvas = this.canvas = document.createElement('canvas');
-        canvas.classList.add('a-canvas');
-        // Prevents overscroll on mobile devices.
-        canvas.addEventListener('touchmove', function (evt) {
-          evt.preventDefault();
-        });
-        document.body.appendChild(canvas);
-        window.addEventListener('resize', this.resizeCanvas.bind(this), false);
-      }
-    },
-
-    /**
-     * Creates a default camera if user has not added one during the initial.
-     * scene traversal.
-     *
-     * Default camera height is at human level (~1.8m) and back such that
-     * entities at the origin (0, 0, 0) are well-centered.
-     */
-    setupDefaultCamera: {
-      value: function () {
-        var cameraWrapperEl;
-        var defaultCamera;
-
-        if (this.cameraEl) { return; }
-
-        // DOM calls to create camera.
-        cameraWrapperEl = document.createElement('a-entity');
-        cameraWrapperEl.setAttribute('position', {x: 0, y: 1.8, z: 4});
-        cameraWrapperEl.setAttribute(DEFAULT_CAMERA_ATTR, '');
-        defaultCamera = document.createElement('a-entity');
-        defaultCamera.setAttribute('camera');
-        defaultCamera.setAttribute('wasd-controls');
-        defaultCamera.setAttribute('look-controls');
-        this.pendingElements++;
-        defaultCamera.addEventListener('loaded',
-                                       this.elementLoadedCallback.bind(this));
-        cameraWrapperEl.appendChild(defaultCamera);
-        this.appendChild(cameraWrapperEl);
-      }
-    },
-
-    /**
-     * Prescibe default lights to the scene.
-     * Does so by injecting markup such that this state is not invisible.
-     * These lights are removed if the user adds any lights.
-     */
-    setupDefaultLights: {
-      value: function () {
-        var ambientLight = document.createElement('a-entity');
-        ambientLight.setAttribute('light',
-                                  {color: '#fff', type: 'ambient'});
-        ambientLight.setAttribute(DEFAULT_LIGHT_ATTR, '');
-        this.appendChild(ambientLight);
-
-        var directionalLight = document.createElement('a-entity');
-        directionalLight.setAttribute('light', { color: '#fff', intensity: 0.2 });
-        directionalLight.setAttribute('position', { x: -1, y: 2, z: 1 });
-        directionalLight.setAttribute(DEFAULT_LIGHT_ATTR, '');
-        this.appendChild(directionalLight);
-      }
-    },
-
-    setupEnterVR: {
-      value: function () {
-        if (this.enterVREl) { return; }
-        this.enterVREl = createEnterVR(this.enterVR.bind(this));
-        document.body.appendChild(this.enterVREl);
-      }
-    },
-
-    setupOrientationModal: {
-      value: function () {
-        var modal = this.orientationModal = document.createElement('div');
-        modal.className = ORIENTATION_MODAL_CLASS;
-        modal.classList.add(HIDDEN_CLASS);
-
-        var exit = document.createElement('button');
-        exit.innerHTML = 'Exit VR';
-        exit.addEventListener('click', this.exitVR.bind(this));
-        modal.appendChild(exit);
-
-        document.body.appendChild(modal);
-      }
-    },
-
-    /**
-     * Set up keyboard shortcuts to:
-     *   - Enter VR when `f` is pressed.
-     *   - Reset sensor when `z` is pressed.
-     */
-    setupKeyboardShortcuts: {
-      value: function () {
-        var self = this;
-        window.addEventListener('keyup', function (event) {
-          if (event.keyCode === 70) {  // f.
-            self.enterVR();
-          }
-          if (event.keyCode === 90) {  // z.
-            controls.resetSensor();
-          }
-        }, false);
-      }
-    },
-
-    /**
-     * Checks for VR mode before kicking off render loop.
-     */
-    setupLoader: {
-      value: function () {
-        var self = this;
-
-        if (self.insideIframe) {
-          self.attachMessageListeners();
-          self.vrLoaderMode().then(function (isVr) {
-            if (isVr) {
-              self.setStereoRenderer();
-            } else {
-              self.setMonoRenderer();
-            }
-            window.top.postMessage({type: 'ready'}, '*');
-          });
-        }
-        if (!self.insideLoader) {
-          self.setupEnterVR();
-          self.setupOrientationModal();
-        }
-      }
-    },
-
-    setupRenderer: {
-      value: function () {
-        var canvas = this.canvas;
-        // Set at startup. To enable/disable antialias
-        // at runttime we would have to recreate the whole context
-        var antialias = this.getAttribute('antialias') === 'true';
-        var renderer = this.renderer = this.monoRenderer =
-          (AScene && AScene.renderer) ||
-          // To prevent creating multiple rendering contexts.
-          new THREE.WebGLRenderer({
-            canvas: canvas,
-            antialias: antialias,
-            alpha: true
-          });
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.sortObjects = false;
-        AScene.renderer = renderer;
-        this.stereoRenderer = new THREE.VREffect(renderer);
-      },
-      writable: window.debug
-    },
-
-    /**
-     * TODO: move stats to component.
-     */
-    setupStats: {
-      value: function () {
-        var statsEnabled = this.getAttribute('stats') === 'true';
-        var statsEl = this.statsEl = document.querySelector('.rs-base');
-        if (!statsEnabled) {
-          if (statsEl) { statsEl.classList.add(HIDDEN_CLASS); }
-          return;
-        }
-        if (statsEl) { statsEl.classList.remove(HIDDEN_CLASS); }
-        if (this.stats) { return; }
-        this.stats = new RStats({
-          CSSPath: '../../style/',
-          values: {
-            fps: { caption: 'fps', below: 30 }
-          },
-          groups: [
-            { caption: 'Framerate', values: [ 'fps', 'raf' ] }
-          ]
-        });
-        this.statsEl = document.querySelector('.rs-base');
-      }
-    },
-
-    showUI: {
-      value: function () {
-        var statsEnabled = this.getAttribute('stats') === 'true';
-        if (statsEnabled) {
-          this.statsEl.classList.remove(HIDDEN_CLASS);
-        }
-        if (this.enterVREl) {
-          this.enterVREl.classList.remove(HIDDEN_CLASS);
-        }
-      }
-    },
-
-    /**
-     * Stops tracking material.
-     *
-     * @param {object} material
-     */
-    unregisterMaterial: {
-      value: function (material) {
-        delete this.materials[material.uuid];
-      }
-    },
-
-    /**
-     * Trigger update to all registered materials.
-     */
-    updateMaterials: {
-      value: function (material) {
-        var materials = this.materials;
-        Object.keys(materials).forEach(function (uuid) {
-          materials[uuid].needsUpdate = true;
-        });
-      },
-      writable: window.debug
-    },
-
-    /**
-     * @returns {object} Promise that resolves a bool whether loader is in VR
-     *          mode.
-     */
-    vrLoaderMode: {
-      value: function () {
-        return new Promise(function (resolve) {
-          var channel = new MessageChannel();
-          window.top.postMessage({type: 'checkVr'}, '*', [channel.port2]);
-          channel.port1.onmessage = function (message) {
-            resolve(!!message.data.data.isVr);
-          };
-        });
-      }
-    },
-
-    /**
-     * The render loop.
-     *
-     * Updates stats.
-     * Updates animations.
-     * Updates behaviors.
-     * Renders with request animation frame.
-     */
-    render: {
-      value: function (t) {
-        var camera = this.cameraEl.components.camera.camera;
-        var stats = this.stats;
-
-        if (stats) {
-          stats('rAF').tick();
-          stats('FPS').frame();
-        }
-        TWEEN.update(t);
-        this.behaviors.forEach(function (behavior) {
-          behavior.update();
-        });
-        this.renderer.render(this.object3D, camera);
-        if (stats) { stats().update(); }
-        this.animationFrameID = window.requestAnimationFrame(
-          this.render.bind(this));
-      }
-    }
-  })
-});
-
-/**
- * Creates Enter VR flow (button and compatibility modal).
- *
- * Creates a button that when clicked will enter into stereo-rendering mode for VR.
- *
- * For compatibility:
- *   - Mobile always has compatibility via polyfill.
- *   - If desktop browser does not have WebVR excluding polyfill, disable button, show modal.
- *   - If desktop browser has WebVR excluding polyfill but not headset connected,
- *     don't disable button, but show modal.
- *   - If desktop browser has WebVR excluding polyfill and has headset connected, then
- *     then no modal.
- *
- * Structure: <div><modal/><button></div>
- *
- * @returns {Element} Wrapper <div>.
- */
-function createEnterVR (enterVRHandler) {
-  var compatModal;
-  var compatModalLink;
-  var compatModalText;
-  // window.hasNativeVRSupport is set in src/aframe-core.js.
-  var hasWebVR = isMobile || window.hasNonPolyfillWebVRSupport;
-  var orientation;
-  var vrButton;
-  var wrapper;
-
-  // Create elements.
-  wrapper = document.createElement('div');
-  wrapper.classList.add(ENTER_VR_CLASS);
-  compatModal = document.createElement('div');
-  compatModal.className = ENTER_VR_MODAL_CLASS;
-  compatModalText = document.createElement('p');
-  compatModalLink = document.createElement('a');
-  compatModalLink.setAttribute('href', 'http://mozvr.com/#start');
-  compatModalLink.setAttribute('target', '_blank');
-  compatModalLink.innerHTML = 'Learn more.';
-  vrButton = document.createElement('button');
-  vrButton.className = ENTER_VR_BTN_CLASS;
-
-  // Insert elements.
-  if (compatModal) {
-    compatModal.appendChild(compatModalText);
-    compatModal.appendChild(compatModalLink);
-    wrapper.appendChild(compatModal);
-  }
-  wrapper.appendChild(vrButton);
-
-  if (!checkHeadsetConnected() && !isMobile) {
-    compatModalText.innerHTML = 'Your browser supports WebVR. To enter VR, connect a headset, or use a mobile phone.';
-    wrapper.setAttribute(ENTER_VR_NO_HEADSET, '');
-  }
-
-  // Handle enter VR flows.
-  if (!hasWebVR) {
-    compatModalText.innerHTML = 'Your browser does not support WebVR. To enter VR, use a VR-compatible browser, or a mobile phone.';
-    wrapper.setAttribute(ENTER_VR_NO_WEBVR, '');
-  } else {
-    vrButton.addEventListener('click', enterVRHandler);
-  }
-  return wrapper;
-
-  /**
-   * Check for headset connection by looking at orientation {0 0 0}.
-   */
-  function checkHeadsetConnected () {
-    controls.update();
-    orientation = dummyDolly.quaternion;
-    if (orientation._x !== 0 || orientation._y !== 0 || orientation._z !== 0) {
-      return true;
-    }
-  }
-}
-
-/**
- * Injects the necessary metatags in the document for mobile support to:
- * 1. Prevent the user to zoom in the document
- * 2. Ensure that window.innerWidth and window.innerHeight have the correct
- *    values and the canvas is properly scaled
- * 3. To allow fullscreen mode when pinning a web app on the home screen on
- *    iOS.
- * Adapted from: https://www.reddit.com/r/web_design/comments/3la04p/
- *
- * @type {Object}
- */
-function injectMetaTags () {
-  var headEl;
-  var meta = document.querySelector('meta[name="viewport"]');
-  if (meta) { return; }  // Already exists.
-
-  headEl = document.getElementsByTagName('head')[0];
-  meta = document.createElement('meta');
-  meta.name = 'viewport';
-  meta.content =
-    'width=device-width,initial-scale=1,shrink-to-fit=no,user-scalable=no';
-  headEl.appendChild(meta);
-
-  // iOS-specific meta tags for fullscreen when pinning to homescreen.
-  meta = document.createElement('meta');
-  meta.name = 'apple-mobile-web-app-capable';
-  meta.content = 'yes';
-  headEl.appendChild(meta);
-
-  meta = document.createElement('meta');
-  meta.name = 'apple-mobile-web-app-status-bar-style';
-  meta.content = 'black';
-  headEl.appendChild(meta);
-}
-
-},{"../../lib/three":36,"../../lib/vendor/rStats":42,"../../lib/vendor/wakelock/wakelock":44,"../utils/":91,"./a-entity":81,"./a-register-element":84,"tween.js":57}],86:[function(require,module,exports){
-var debug = require('../utils/debug');
-var styleParser = require('style-attr');
-var utils = require('../utils/');
-
-var components = module.exports.components = {};  // Keep track of registered components.
-var error = debug('core:register-component:error');
-
-/**
- * Component class definition.
- *
- * Components configure appearance, modify behavior, or add functionality to
- * entities. The behavior and appearance of an entity can be changed at runtime
- * by adding, removing, or updating components. Entities do not share instances
- * of components.
- *
- * @namespace Component
- * @property {object} data - Stores component data, populated by parsing the
- *           attribute name of the component plus applying defaults and mixins.
- * @property {object} el - Reference to the entity element.
- * @property {string} name - Name of the attribute the component is connected
- *           to.
- * @member {Element} el
- * @member {object} data
- * @member {function} getData
- * @member {function} init
- * @member {function} update
- * @member {function} remove
- * @member {function} parse
- * @member {function} stringify
- */
-var Component = module.exports.Component = function (el) {
-  var attrs = el.getAttribute(this.name);
-  this.el = el;
-  this.data = {};
-  this.parseAttributes(attrs);
-  this.init();
-  this.update();
-};
-
-Component.prototype = {
-  /**
-   * Contains the type schema and defaults for the data values.
-   * Data is coerced into the types of the values of the defaults.
-   */
-  schema: {},
-
-  /**
-   * Init handler. Similar to attachedCallback.
-   * Called during component initialization and is only run once.
-   * Components can use this to set initial state.
-   */
-  init: function () { /* no-op */ },
-
-  /**
-   * Update handler. Similar to attributeChangedCallback.
-   * Called whenever component's data changes.
-   * Also called on component initialization when the component receives initial data.
-   *
-   * @param {object} previousData - Previous attributes of the component.
-   */
-  update: function (previousData) { /* no-op */ },
-
-  /**
-   * Remove handler. Similar to detachedCallback.
-   * Called whenever component is removed from the entity (i.e., removeAttribute).
-   * Components can use this to reset behavior on the entity.
-   */
-  remove: function () { /* no-op */ },
-
-  /**
-   * Describes how the component should deserialize HTML attribute into data.
-   * Can be overridden by the component.
-   *
-   * The default parsing is parsing style-like strings, camelCasing keys for
-   * error-tolerance (`max-value` ~= `maxValue`).
-   *
-   * @param {string} value - HTML attribute.
-   * @returns {object} Data.
-   */
-  parse: function (value) {
-    if (typeof value !== 'string') { return value; }
-    return transformKeysToCamelCase(styleParser.parse(value));
-  },
-
-  /**
-   * Describes how the component should serialize data to a string to update the DOM.
-   * Can be overridden by the component.
-   *
-   * The default stringify is to a style-like string.
-   *
-   * @param {object} data
-   * @returns {string}
-   */
-  stringify: function (data) {
-    if (typeof data !== 'object') { return data; }
-    return styleParser.stringify(data);
-  },
-
-  /**
-   * Returns a copy of data such that we don't expose the private this.data.
-   *
-   * @returns {object} data
-   */
-  getData: function () {
-    var data = this.data;
-    if (typeof data !== 'object') { return data; }
-    return utils.extend({}, data);
-  },
-
-  /**
-   * Called when new data is coming from the entity (e.g., attributeChangedCb)
-   * or from its mixins. Does some parsing and applying before updating the
-   * component.
-   * Does not update if data has not changed.
-   */
-  updateAttributes: function (newData) {
-    var previousData = extendWithCheck({}, this.data);
-    this.parseAttributes(newData);
-    // Don't update if properties haven't changed
-    if (utils.deepEqual(previousData, this.data)) { return; }
-    this.update(previousData);
-    this.el.emit('componentchanged', {
-      name: this.name,
-      newData: this.getData(),
-      oldData: previousData
-    });
-  },
-
-  /**
-   * Builds component data from the current state of the entity, ultimately
-   * updating this.data.
-   *
-   * If the component was detached completely, set data to null.
-   *
-   * Precedence:
-   * 1. Defaults data
-   * 2. Mixin data.
-   * 3. Attribute data.
-   * Finally coerce the data to the types of the defaults.
-   */
-  parseAttributes: function (newData) {
-    var self = this;
-    var data = {};
-    var schema = self.schema;
-    var el = self.el;
-    var mixinEls = el.mixinEls;
-    var name = self.name;
-
-    // 1. Default values (lowest precendence).
-    Object.keys(schema).forEach(applyDefault);
-    function applyDefault (key) {
-      data[key] = schema[key].default;
-    }
-
-    // 2. Mixin values.
-    mixinEls.forEach(applyMixin);
-    function applyMixin (mixinEl) {
-      var mixinData = mixinEl.getAttribute(name);
-      data = extendWithCheck(data, mixinData);
-    }
-
-    // 3. Attribute values (highest precendence).
-    data = extendWithCheck(data, newData);
-
-    // Coerce to the type of the defaults.
-    this.data = utils.coerce(data, schema);
-  }
-};
-
-/**
- * Registers a component to A-Frame.
- *
- * @param {string} name - Component name.
- * @param {object} definition - Component property and methods.
- * @returns {object} Component.
- */
-module.exports.registerComponent = function (name, definition) {
-  var NewComponent;
-  var proto = {};
-
-  // Format definition object to prototype object.
-  Object.keys(definition).forEach(function (key) {
-    proto[key] = {
-      value: definition[key],
-      writable: window.debug
-    };
-  });
-
-  if (components[name]) {
-    error('The component "' + name + '" has been already registered');
-  }
-  NewComponent = function (el) {
-    Component.call(this, el);
-  };
-  NewComponent.prototype = Object.create(Component.prototype, proto);
-  NewComponent.prototype.name = name;
-  NewComponent.prototype.constructor = NewComponent;
-  components[name] = {
-    Component: NewComponent,
-    dependencies: NewComponent.prototype.dependencies,
-    parse: NewComponent.prototype.parse.bind(NewComponent.prototype),
-    schema: NewComponent.prototype.schema,
-    stringify: NewComponent.prototype.stringify.bind(NewComponent.prototype)
-  };
-  return NewComponent;
-};
-
-/**
-* Object extending, but checks if `source` is an object first.
-* If not, `source` is a primitive and we don't do any extending.
-*
-* @param dest - Destination object or value.
-* @param source - Source object or value
-* @returns Overridden object or value.
-*/
-function extendWithCheck (dest, source) {
-  var isSourceObject = typeof source === 'object';
-  if (source === null) { return dest; }
-  if (!isSourceObject) {
-    if (source === undefined) { return dest; }
-    return source;
-  }
-  return utils.extend(dest, source);
-}
-
-/**
- * Converts string from hyphen to camelCase.
- *
- * @param {string} str - String to camelCase.
- * @return {string} CamelCased string.
- */
-function toCamelCase (str) {
-  return str.replace(/-([a-z])/g, camelCase);
-  function camelCase (g) { return g[1].toUpperCase(); }
-}
-
-/**
- * Converts object's keys from hyphens to camelCase (e.g., `max-value` to
- * `maxValue`).
- *
- * @param {object} obj - The object to camelCase keys.
- * @return {object} The object with keys camelCased.
- */
-function transformKeysToCamelCase (obj) {
-  var keys = Object.keys(obj);
-  var camelCaseObj = {};
-  keys.forEach(function (key) {
-    var camelCaseKey = toCamelCase(key);
-    camelCaseObj[camelCaseKey] = obj[key];
-  });
-  return camelCaseObj;
-}
-
-},{"../utils/":91,"../utils/debug":90,"style-attr":55}],87:[function(require,module,exports){
-require('es6-promise').polyfill();  // Polyfill `Promise`.
-require('present');  // Polyfill `performance.now()`.
-
-require('../style/aframe-core.css');
-require('../style/rStats.css');
-
-// Required before `AEntity` so that all components are registered.
-var AScene = require('./core/a-scene');
-var components = require('./core/component').components;
-var debug = require('./utils/debug');
-var registerComponent = require('./core/component').registerComponent;
-var registerElement = require('./core/a-register-element');
-// Exports THREE to window so three.js can be used without alteration.
-var THREE = window.THREE = require('../lib/three');
-
-var pkg = require('../package');
-var utils = require('./utils/');
-
-require('./components/index');  // Register core components.
-var ANode = require('./core/a-node');
-var AEntity = require('./core/a-entity');  // Depends on ANode and core components.
-
-// Webvr polyfill configuration.
-window.hasNonPolyfillWebVRSupport = !!navigator.getVRDevices;
-window.WebVRConfig = {
-  TOUCH_PANNER_DISABLED: true,
-  MOUSE_KEYBOARD_CONTROLS_DISABLED: true
-};
-require('webvr-polyfill');
-
-require('./core/a-animation');
-require('./core/a-assets');
-require('./core/a-cubemap');
-require('./core/a-mixin');
-require('./core/a-scene');
-
-module.exports = {
-  AEntity: AEntity,
-  ANode: ANode,
-  AScene: AScene,
-  components: components,
-  debug: debug,
-  registerComponent: registerComponent,
-  registerElement: registerElement,
-  THREE: THREE,
-  utils: utils,
-  version: pkg.version
-};
-
-},{"../lib/three":36,"../package":59,"../style/aframe-core.css":93,"../style/rStats.css":94,"./components/index":64,"./core/a-animation":78,"./core/a-assets":79,"./core/a-cubemap":80,"./core/a-entity":81,"./core/a-mixin":82,"./core/a-node":83,"./core/a-register-element":84,"./core/a-scene":85,"./core/component":86,"./utils/":91,"./utils/debug":90,"es6-promise":49,"present":51,"webvr-polyfill":58}],88:[function(require,module,exports){
-var coordinates = require('./coordinates');
-var utils = require('./index');
-
-/**
- * If `value` is object, coerce values of `val` into types defined by `schema`.
- * If `value` is string and `schemaAttr` defined, coerces `value` into the value in `schema`
- * pointed to by `schemaAttr`.
- *
- * @param {object|string} value - value(s) to coerce.
- * @param {object} schema - Object which values will be used to coerce to.
- * @param {string} schemaAttr -
- *   In case `value` is a string, `schemaAttr` signifies which value in `schema` to coerce to.
- * @returns Coerced value or object.
- */
-module.exports = function (value, schema, schemaAttr) {
-  var obj = value;
-
-  // Batch coerce.
-  if (typeof value === 'object') {
-    Object.keys(obj).forEach(function (key) {
-      var attrSchema = schema[key];
-      var schemaValue;
-      if (!attrSchema) {
-        utils.warn('Unknown component attribute: ' + key);
-        return;
-      }
-      schemaValue = attrSchema.default;
-      if (schemaValue === undefined) { return; }
-      obj[key] = coerceValue(obj[key], schemaValue);
-    });
-    return obj;
-  }
-
-  // Handle case: string.
-  return coerceValue(value, schema.default);
-
-  function coerceValue (value, targetValue) {
-    if (typeof value !== 'string') { return value; }
-
-    switch (typeof targetValue) {
-      case 'boolean':
-        return value === 'true';
-      case 'number':
-        return parseFloat(value);
-      case 'object':
-        if (utils.deepEqual(Object.keys(targetValue), ['x', 'y', 'z'])) {
-          return coordinates.parse(value);
-        }
-        return value;
-      default:
-        return value;
-    }
-  }
-};
-
-},{"./coordinates":89,"./index":91}],89:[function(require,module,exports){
-// Coordinate string regex. Handles negative, positive, and decimals.
-var regex = /\s*(-?\d*\.{0,1}\d+)\s*(-?\d*\.{0,1}\d+)\s*(-?\d*\.{0,1}\d+)\s*/;
-module.exports.regex = regex;
-
-/**
- * Parses coordinates from an "x y z" string.
- * Example: "3 10 -5" to {x: 3, y: 10, z: -5}.
- *
- * @param {string} val - An "x y z" string.
- * @param {string} defaults - fallback value.
- * @returns {object} An object with keys [x, y, z].
- */
-function parse (value, schema) {
-  var coordinate;
-  schema = schema || {};
-  if (typeof value !== 'string' || value === null) { return value; }
-  coordinate = value.trim().replace(/\s+/g, ' ').split(' ');
-  return {
-    x: parseFloat(coordinate[0] || schema.x.default),
-    y: parseFloat(coordinate[1] || schema.y.default),
-    z: parseFloat(coordinate[2] || schema.z.default)
-  };
-}
-module.exports.parse = parse;
-
-/**
- * Stringifies coordinates from an object with keys [x y z].
- * Example: {x: 3, y: 10, z: -5} to "3 10 -5".
- *
- * @param {object|string} val - An object with keys [x y z].
- * @returns {string} An "x y z" string.
- */
-function stringify (value) {
-  if (typeof value !== 'object') { return value; }
-  return [value.x, value.y, value.z].join(' ');
-}
-module.exports.stringify = stringify;
-
-/**
- * @returns {bool}
- */
-module.exports.isCoordinate = function (value) {
-  return regex.test(value);
-};
-
-/**
- * Prototype mixin for coordinate-only components.
- */
-module.exports.componentMixin = {
-  parse: function (value) {
-    return parse(value, this.schema);
-  },
-
-  stringify: stringify
-};
-
-},{}],90:[function(require,module,exports){
-(function (process){
-var debugLib = require('debug');
-var extend = require('object-assign');
-
-var settings = {
-  colors: {
-    error: 'red',
-    info: 'gray',
-    warn: 'orange',
-    warning: 'orange'
-  }
-};
-
-/**
- * Monkeypatches `debug` so we can colorize error/warning messages.
- *
- * (See issue: https://github.com/visionmedia/debug/issues/137)
- */
-var debug = function (namespace) {
-  var d = debugLib(namespace);
-
-  d.color = getDebugNamespaceColor(namespace);
-
-  return d;
-};
-extend(debug, debugLib);
-
-/**
- * Returns the type of the namespace (e.g., `error`, `warn`).
- *
- * @param {String} namespace
- *   The debug logger's namespace (e.g., `components:geometry:warn`).
- * @returns {String} The type of the namespace (e.g., `warn`).
- * @api private
- */
-function getDebugNamespaceType (namespace) {
-  var chunks = namespace.split(':');
-
-  return chunks[chunks.length - 1];  // Return the last one
-}
-
-/**
- * Returns the color of the namespace (e.g., `orange`).
- *
- * @param {String} namespace
- *   The debug logger's namespace (e.g., `components:geometry:warn`).
- * @returns {String} The color of the namespace (e.g., `orange`).
- * @api private
- */
-function getDebugNamespaceColor (namespace) {
-  var type = getDebugNamespaceType(namespace);
-
-  var color = settings.colors && settings.colors[type];
-
-  return color || null;
-}
-
-/**
- * Returns `localStorage` if possible.
- *
- * This is necessary because Safari throws when a user disables
- * cookies or `localStorage` and you attempt to access it.
- *
- * @returns {localStorage}
- * @api private
- */
-function storage () {
-  try {
-    return window.localStorage;
-  } catch (e) {
-  }
-}
-
-/**
- * To enable console logging, type this in the Console of your Dev Tools:
- *
- *   localStorage.logs = 1
- *
- * To disable console logging:
- *
- *   localStorage.logs = 0
- *
- */
-var ls = storage();
-if (ls && (parseInt(ls.logs, 10) || ls.logs === 'true')) {
-  debug.enable('*');
-} else {
-  // We do not call `debug.disable` because it requires two reloads to take.
-  // See https://github.com/visionmedia/debug/issues/238
-  // Instead, we call `debug.save` to remove the `debug` namespaces persisted
-  // in `localStorage`.
-  debug.save(null);
-  // And then we `noop` the function so nothing happens.
-  debug = function () {
-    /* noop */
-    return function () {};
-  };
-}
-
-if (process.browser) { window.logs = debug; }
-
-module.exports = debug;
-
-}).call(this,require('_process'))
-},{"_process":1,"debug":45,"object-assign":50}],91:[function(require,module,exports){
-/* global CustomEvent, location */
-/* Centralized place to reference utilities since utils is exposed to the user. */
-var objectAssign = require('object-assign');
-
-module.exports.coerce = require('./coerce');
-module.exports.coordinates = require('./coordinates');
-
-/**
- * Fires a custom DOM event.
- *
- * @param {Element} el Element on which to fire the event.
- * @param {String} name Name of the event.
- * @param {Object=} [data={bubbles: true, {detail: <el>}}]
- *   Data to pass as `customEventInit` to the event.
- */
-module.exports.fireEvent = function (el, name, data) {
-  data = data || {};
-  data.detail = data.detail || {};
-  data.detail.target = data.detail.target || el;
-  var evt = new CustomEvent(name, data);
-  evt.target = el;
-  el.dispatchEvent(evt);
-};
-
-/**
- * Throws an error given a message.
- *
- * @param {String} msg Error message.
- */
-module.exports.error = function (msg) {
-  throw new Error(msg);
-};
-
-/**
- * Emits a console warning given passed message argument(s).
- */
-module.exports.warn = function () {
-  console.warn.apply(console, arguments);
-};
-
-/**
- * Emits a console log given passed message argument(s).
- */
-module.exports.log = function () {
-  console.log.apply(console, arguments);
-};
-
-/**
- * Mix the properties of source object(s) into a destination object.
- *
- * @param  {object} dest - The object to which properties will be copied.
- * @param  {...object} source - The object(s) from which properties will be copied.
- */
-module.exports.extend = objectAssign;
-
-/**
- * Checks if two objects have the same attributes and values, including nested objects.
- *
- * @param {object} a - First object.
- * @param {object} b - Second object.
- * @returns {boolean} Whether two objects are deeply equal.
- */
-function deepEqual (a, b) {
-  var keysA = Object.keys(a);
-  var keysB = Object.keys(b);
-  var i;
-  if (keysA.length !== keysB.length) { return false; }
-  // If there are no keys, compare the objects.
-  if (keysA.length === 0) { return a === b; }
-  for (i = 0; i < keysA.length; ++i) {
-    if (a[keysA[i]] !== b[keysA[i]]) { return false; }
-  }
-  return true;
-}
-module.exports.deepEqual = deepEqual;
-
-/**
- * Computes the difference between two objects.
- *
- * @param {object} a - First object to compare (e.g., oldData).
- * @param {object} b - Second object to compare (e.g., newData).
- * @returns {object}
- *   Difference object where set of keys note which values were not equal, and values are
- *   `b`'s values.
- */
-module.exports.diff = function (a, b) {
-  var diff = {};
-  var keys = Object.keys(a);
-  Object.keys(b).forEach(function collectKeys (bKey) {
-    if (keys.indexOf(bKey) === -1) {
-      keys.push(bKey);
-    }
-  });
-  keys.forEach(function doDiff (key) {
-    var aVal = a[key];
-    var bVal = b[key];
-    var isComparingObjects = aVal && bVal &&
-                             aVal.constructor === Object && bVal.constructor === Object;
-    if ((isComparingObjects && !deepEqual(aVal, bVal)) ||
-        (!isComparingObjects && aVal !== bVal)) {
-      diff[key] = bVal;
-    }
-  });
-  return diff;
-};
-
-/**
- * Checks if browser is mobile.
- * @return {Boolean} True if mobile browser detected.
- */
-module.exports.isMobile = function () {
-  var check = false;
-  (function (a) {
-    if (/(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i.test(a) || /1207|6310|6590|3gso|4thp|50[1-6]i|770s|802s|a wa|abac|ac(er|oo|s\-)|ai(ko|rn)|al(av|ca|co)|amoi|an(ex|ny|yw)|aptu|ar(ch|go)|as(te|us)|attw|au(di|\-m|r |s )|avan|be(ck|ll|nq)|bi(lb|rd)|bl(ac|az)|br(e|v)w|bumb|bw\-(n|u)|c55\/|capi|ccwa|cdm\-|cell|chtm|cldc|cmd\-|co(mp|nd)|craw|da(it|ll|ng)|dbte|dc\-s|devi|dica|dmob|do(c|p)o|ds(12|\-d)|el(49|ai)|em(l2|ul)|er(ic|k0)|esl8|ez([4-7]0|os|wa|ze)|fetc|fly(\-|_)|g1 u|g560|gene|gf\-5|g\-mo|go(\.w|od)|gr(ad|un)|haie|hcit|hd\-(m|p|t)|hei\-|hi(pt|ta)|hp( i|ip)|hs\-c|ht(c(\-| |_|a|g|p|s|t)|tp)|hu(aw|tc)|i\-(20|go|ma)|i230|iac( |\-|\/)|ibro|idea|ig01|ikom|im1k|inno|ipaq|iris|ja(t|v)a|jbro|jemu|jigs|kddi|keji|kgt( |\/)|klon|kpt |kwc\-|kyo(c|k)|le(no|xi)|lg( g|\/(k|l|u)|50|54|\-[a-w])|libw|lynx|m1\-w|m3ga|m50\/|ma(te|ui|xo)|mc(01|21|ca)|m\-cr|me(rc|ri)|mi(o8|oa|ts)|mmef|mo(01|02|bi|de|do|t(\-| |o|v)|zz)|mt(50|p1|v )|mwbp|mywa|n10[0-2]|n20[2-3]|n30(0|2)|n50(0|2|5)|n7(0(0|1)|10)|ne((c|m)\-|on|tf|wf|wg|wt)|nok(6|i)|nzph|o2im|op(ti|wv)|oran|owg1|p800|pan(a|d|t)|pdxg|pg(13|\-([1-8]|c))|phil|pire|pl(ay|uc)|pn\-2|po(ck|rt|se)|prox|psio|pt\-g|qa\-a|qc(07|12|21|32|60|\-[2-7]|i\-)|qtek|r380|r600|raks|rim9|ro(ve|zo)|s55\/|sa(ge|ma|mm|ms|ny|va)|sc(01|h\-|oo|p\-)|sdk\/|se(c(\-|0|1)|47|mc|nd|ri)|sgh\-|shar|sie(\-|m)|sk\-0|sl(45|id)|sm(al|ar|b3|it|t5)|so(ft|ny)|sp(01|h\-|v\-|v )|sy(01|mb)|t2(18|50)|t6(00|10|18)|ta(gt|lk)|tcl\-|tdg\-|tel(i|m)|tim\-|t\-mo|to(pl|sh)|ts(70|m\-|m3|m5)|tx\-9|up(\.b|g1|si)|utst|v400|v750|veri|vi(rg|te)|vk(40|5[0-3]|\-v)|vm40|voda|vulc|vx(52|53|60|61|70|80|81|83|85|98)|w3c(\-| )|webc|whit|wi(g |nc|nw)|wmlb|wonu|x700|yas\-|your|zeto|zte\-/i.test(a.substr(0, 4))) {
-      check = true;
-    }
-    if (isIOS()) {
-      check = true;
-    }
-  })(navigator.userAgent || navigator.vendor || window.opera);
-  return check;
-};
-
-var isIOS = module.exports.isIOS = function () {
-  return /iPad|iPhone|iPod/.test(navigator.platform);
-};
-
-/**
- * Checks mobile device orientation
- * @return {Boolean} True if landscape orientation
- */
-module.exports.isLandscape = function () {
-  return window.orientation === 90 || window.orientation === -90;
-};
-
-/**
- * Splits a string into an array based on a delimiter.
- *
- * @param   {string=} [str='']        Source string
- * @param   {string=} [delimiter=' '] Delimiter to use
- * @returns {array}                   Array of delimited strings
- */
-module.exports.splitString = function (str, delimiter) {
-  if (typeof delimiter === 'undefined') { delimiter = ' '; }
-  // First collapse the whitespace (or whatever the delimiter is).
-  var regex = new RegExp(delimiter, 'g');
-  str = (str || '').replace(regex, delimiter);
-  // Then split.
-  return str.split(delimiter);
-};
-
-/**
- * Extracts data from the element given an object that contains expected keys.
- *
- * @param {Element} Source element.
- * @param {Object} [defaults={}] Object of default key-value pairs.
- * @returns {Object}
- */
-module.exports.getElData = function (el, defaults) {
-  defaults = defaults || {};
-  var data = {};
-  Object.keys(defaults).forEach(copyAttribute);
-  function copyAttribute (key) {
-    if (el.hasAttribute(key)) {
-      data[key] = el.getAttribute(key);
-    }
-  }
-  return data;
-};
-
-/**
- * Retrieves querystring value.
- * @param  {String} name Name of querystring key.
- * @return {String}      Value
- */
-module.exports.getUrlParameter = function (name) {
-  name = name.replace(/[\[]/, '\\[').replace(/[\]]/, '\\]');
-  var regex = new RegExp('[\\?&]' + name + '=([^&#]*)');
-  var results = regex.exec(location.search);
-  return results === null ? '' : decodeURIComponent(results[1].replace(/\+/g, ' '));
-};
-
-// Must be at bottom to avoid circular dependency.
-module.exports.srcLoader = require('./src-loader');
-
-},{"./coerce":88,"./coordinates":89,"./src-loader":92,"object-assign":50}],92:[function(require,module,exports){
-/* global Image */
-var debug = require('./debug');
-
-var warn = debug('utils:src-loader:warn');
-
-/**
- * Validates a texture, either as a selector or as a URL.
- * Detects whether `src` is pointing to an image or to a video, and invokes the
- * appropriate callback.
- *
- * If `src` is selector, check if it's valid, return the el in the callback.
- * An el is returned so that it can be reused for texture loading.
- *
- * If `src` is a URL, check if it's valid, return the src in the callback.
- *
- * @params {string} src - A selector or a URL. URLs must be wrapped by `url()`.
- * @params {function} isImageCb - callback if texture is an image.
- * @params {function} isVideoCb - callback if texture is a video.
- */
-function validateSrc (src, isImageCb, isVideoCb) {
-  var textureEl;
-  var isImage;
-  var isVideo;
-  var url = parseUrl(src);
-
-  // src is a url.
-  if (url) {
-    validateImageUrl(url, function isAnImageUrl (isImage) {
-      if (!isImage) { isVideoCb(url); return; }
-      isImageCb(url);
-    });
-    return;
-  }
-
-  // src is a query selector.
-  textureEl = validateAndGetQuerySelector(src);
-  if (!textureEl) { return; }
-  isImage = textureEl && textureEl.tagName === 'IMG';
-  isVideo = textureEl && textureEl.tagName === 'VIDEO';
-  if (isImage) { return isImageCb(textureEl); }
-  if (isVideo) { return isVideoCb(textureEl); }
-
-  // src is a valid selector but doesn't match with a <img> or <video> element.
-  warn('"%s" does not point to a valid <img> or <video> element', src);
-}
-
-/**
- * Validates six images as a cubemap, either as selector or comma-separated
- * URLs.
- *
- * @param {string} src - A selector or comma-separated image URLs. Image URLs
-          must be wrapped by `url()`.
- * @param {string} src - A selector or comma-separated image URLs. Image URLs
-          must be wrapped by `url()`.
- */
-function validateCubemapSrc (src, cb) {
-  var aCubemap;
-  var cubemapSrcRegex = '';
-  var i;
-  var urls;
-  var validatedUrls = [];
-
-  for (i = 0; i < 6; i++) {
-    cubemapSrcRegex += 'url\((.+)\)\s*,\s*';
-  }
-  urls = src.match(cubemapSrcRegex);
-
-  // `src` is a comma-separated list of URLs.
-  // In this case, re-use validateSrc for each side of the cube.
-  function isImageCb (url) {
-    validatedUrls.push(url);
-    if (validatedUrls.length === 6) {
-      cb(validatedUrls);
-    }
-  }
-  if (urls) {
-    for (i = 1; i < 7; i++) {
-      validateSrc(urls[i], isImageCb);
-    }
-    return;
-  }
-
-  // `src` is a query selector to <a-cubemap> containing six $([src])s.
-  aCubemap = validateAndGetQuerySelector(src);
-  if (!aCubemap) { return; }
-  if (aCubemap.tagName === 'A-CUBEMAP' && aCubemap.srcs) {
-    return cb(aCubemap.srcs);
-  }
-  // Else if aCubeMap is not a <a-cubemap>.
-  warn('Selector "%s" does not point to <a-cubemap>', src);
-}
-
-/**
- * Parses src from `url(src)`.
- * @param  {string} src - String to parse.
- * @return {string} The parsed src, if parseable.
- */
-function parseUrl (src) {
-  var parsedSrc = src.match(/\url\((.+)\)/);
-  if (!parsedSrc) { return; }
-  return parsedSrc[1];
-}
-
-/**
- * Validate src is a valid image url
- * @param  {string} src - url that will be tested
- * @param  {function} onResult - callback with the test result
- */
-function validateImageUrl (src, onResult) {
-  var tester = new Image();
-  tester.addEventListener('load', onLoad);
-  function onLoad () { onResult(true); }
-  tester.addEventListener('error', onError);
-  function onError () { onResult(false); }
-  tester.src = src;
-}
-
-/**
- * Query and validate a query selector,
- *
- * @param  {string} selector - DOM selector.
- * @return {object|null|undefined} Selected DOM element if exists.
-           null if query yields no results.
-           undefined if `selector` is not a valid selector.
- */
-function validateAndGetQuerySelector (selector) {
-  try {
-    var el = document.querySelector(selector);
-    if (!el) {
-      warn('No element was found matching the selector: "%s"', selector);
-    }
-    return el;
-  } catch (e) {  // Capture exception if it's not a valid selector.
-    warn('"%s" is not a valid selector', selector);
-    return undefined;
-  }
-}
-
-module.exports = {
-  parseUrl: parseUrl,
-  validateSrc: validateSrc,
-  validateCubemapSrc: validateCubemapSrc
-};
-
-},{"./debug":90}],93:[function(require,module,exports){
-var css = "html {\n  bottom: 0;\n  left: 0;\n  position: fixed;\n  right: 0;\n  top: 0;\n}\nbody {\n  height: 100%;\n  margin: 0;\n  overflow: hidden;\n  padding: 0;\n  width: 100%;\n}\n.a-hidden {\n  display: none !important;\n}\n.a-canvas {\n  height: 100%;\n  left: 0;\n  position: absolute;\n  top: 0;\n  width: 100%;\n}\na-assets,\na-scene video,\na-scene img {\n  display: none;\n}\n.a-enter-vr {\n  align-items: flex-end;\n  -webkit-align-items: flex-end;\n  bottom: 5px;\n  display: flex;\n  display: -webkit-flex;\n  font-family: sans-serif, monospace;\n  font-size: 13px;\n  font-weight: 200;\n  line-height: 16px;\n  height: 72px;\n  position: fixed;\n  right: 5px;\n}\n.a-enter-vr-button {\n  background: rgba(0, 0, 0, 0.35) url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20245.82%20141.73%22%3E%3Cdefs%3E%3Cstyle%3E.a%7Bfill%3A%23fff%3Bfill-rule%3Aevenodd%3B%7D%3C%2Fstyle%3E%3C%2Fdefs%3E%3Ctitle%3Emask%3C%2Ftitle%3E%3Cpath%20class%3D%22a%22%20d%3D%22M175.56%2C111.37c-22.52%2C0-40.77-18.84-40.77-42.07S153%2C27.24%2C175.56%2C27.24s40.77%2C18.84%2C40.77%2C42.07S198.08%2C111.37%2C175.56%2C111.37ZM26.84%2C69.31c0-23.23%2C18.25-42.07%2C40.77-42.07s40.77%2C18.84%2C40.77%2C42.07-18.26%2C42.07-40.77%2C42.07S26.84%2C92.54%2C26.84%2C69.31ZM27.27%2C0C11.54%2C0%2C0%2C12.34%2C0%2C28.58V110.9c0%2C16.24%2C11.54%2C30.83%2C27.27%2C30.83H99.57c2.17%2C0%2C4.19-1.83%2C5.4-3.7L116.47%2C118a8%2C8%2C0%2C0%2C1%2C12.52-.18l11.51%2C20.34c1.2%2C1.86%2C3.22%2C3.61%2C5.39%2C3.61h72.29c15.74%2C0%2C27.63-14.6%2C27.63-30.83V28.58C245.82%2C12.34%2C233.93%2C0%2C218.19%2C0H27.27Z%22%2F%3E%3C%2Fsvg%3E) 50% 50% no-repeat;\n  background-size: 70% 70%;\n  border: 0;\n  bottom: 0;\n  color: #FFF;\n  cursor: pointer;\n  height: 50px;\n  transition: background .05s ease;\n  -webkit-transition: background .05s ease;\n  width: 60px;\n  z-index: 999999;\n}\n.a-enter-vr-button:active,\n.a-enter-vr-button:hover {\n  background-color: #666666;\n}\n[data-a-enter-vr-no-webvr] .a-enter-vr-button {\n  border-color: #666666;\n  opacity: 0.65;\n}\n[data-a-enter-vr-no-webvr] .a-enter-vr-button:active,\n[data-a-enter-vr-no-webvr] .a-enter-vr-button:hover {\n  background-color: rgba(0, 0, 0, .35);\n  cursor: not-allowed;\n}\n.a-enter-vr-modal {\n  background-color: #666666;\n  border-radius: 0;\n  color: #FFF;\n  height: 32px;\n  opacity: 0;\n  margin-right: 10px;\n  padding: 9px;\n  width: 280px;\n  position: relative;\n  transition: opacity .05s ease;\n  -webkit-transition: opacity .05s ease;\n}\n.a-enter-vr-modal:after {\n  border-bottom: 10px solid transparent;\n  border-left: 10px solid #666666;\n  border-top: 10px solid transparent;\n  display: inline-block;\n  content: '';\n  position: absolute;\n  right: -5px;\n  top: 5px;\n  width: 0;\n  height: 0;\n}\n.a-enter-vr-modal p {\n  margin: 0;\n  display: inline;\n}\n.a-enter-vr-modal p:after {\n  content: ' ';\n}\n.a-enter-vr-modal a {\n  color: #FFF;\n  display: inline;\n}\n[data-a-enter-vr-no-webvr]:hover .a-enter-vr-modal,\n[data-a-enter-vr-no-headset]:hover .a-enter-vr-modal {\n  opacity: 1;\n}\n.a-orientation-modal {\n  position: absolute;\n  width: 100%;\n  height: 100%;\n  top: 0;\n  left: 0;\n  background: rgba(244, 244, 244, 1) url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20xmlns%3Axlink%3D%22http%3A//www.w3.org/1999/xlink%22%20version%3D%221.1%22%20x%3D%220px%22%20y%3D%220px%22%20viewBox%3D%220%200%2090%2090%22%20enable-background%3D%22new%200%200%2090%2090%22%20xml%3Aspace%3D%22preserve%22%3E%3Cpolygon%20points%3D%220%2C0%200%2C0%200%2C0%20%22%3E%3C/polygon%3E%3Cg%3E%3Cpath%20d%3D%22M71.545%2C48.145h-31.98V20.743c0-2.627-2.138-4.765-4.765-4.765H18.456c-2.628%2C0-4.767%2C2.138-4.767%2C4.765v42.789%20%20%20c0%2C2.628%2C2.138%2C4.766%2C4.767%2C4.766h5.535v0.959c0%2C2.628%2C2.138%2C4.765%2C4.766%2C4.765h42.788c2.628%2C0%2C4.766-2.137%2C4.766-4.765V52.914%20%20%20C76.311%2C50.284%2C74.173%2C48.145%2C71.545%2C48.145z%20M18.455%2C16.935h16.344c2.1%2C0%2C3.808%2C1.708%2C3.808%2C3.808v27.401H37.25V22.636%20%20%20c0-0.264-0.215-0.478-0.479-0.478H16.482c-0.264%2C0-0.479%2C0.214-0.479%2C0.478v36.585c0%2C0.264%2C0.215%2C0.478%2C0.479%2C0.478h7.507v7.644%20%20%20h-5.534c-2.101%2C0-3.81-1.709-3.81-3.81V20.743C14.645%2C18.643%2C16.354%2C16.935%2C18.455%2C16.935z%20M16.96%2C23.116h19.331v25.031h-7.535%20%20%20c-2.628%2C0-4.766%2C2.139-4.766%2C4.768v5.828h-7.03V23.116z%20M71.545%2C73.064H28.757c-2.101%2C0-3.81-1.708-3.81-3.808V52.914%20%20%20c0-2.102%2C1.709-3.812%2C3.81-3.812h42.788c2.1%2C0%2C3.809%2C1.71%2C3.809%2C3.812v16.343C75.354%2C71.356%2C73.645%2C73.064%2C71.545%2C73.064z%22%3E%3C/path%3E%3Cpath%20d%3D%22M28.919%2C58.424c-1.466%2C0-2.659%2C1.193-2.659%2C2.66c0%2C1.466%2C1.193%2C2.658%2C2.659%2C2.658c1.468%2C0%2C2.662-1.192%2C2.662-2.658%20%20%20C31.581%2C59.617%2C30.387%2C58.424%2C28.919%2C58.424z%20M28.919%2C62.786c-0.939%2C0-1.703-0.764-1.703-1.702c0-0.939%2C0.764-1.704%2C1.703-1.704%20%20%20c0.94%2C0%2C1.705%2C0.765%2C1.705%2C1.704C30.623%2C62.022%2C29.858%2C62.786%2C28.919%2C62.786z%22%3E%3C/path%3E%3Cpath%20d%3D%22M69.654%2C50.461H33.069c-0.264%2C0-0.479%2C0.215-0.479%2C0.479v20.288c0%2C0.264%2C0.215%2C0.478%2C0.479%2C0.478h36.585%20%20%20c0.263%2C0%2C0.477-0.214%2C0.477-0.478V50.939C70.131%2C50.676%2C69.917%2C50.461%2C69.654%2C50.461z%20M69.174%2C51.417V70.75H33.548V51.417H69.174z%22%3E%3C/path%3E%3Cpath%20d%3D%22M45.201%2C30.296c6.651%2C0%2C12.233%2C5.351%2C12.551%2C11.977l-3.033-2.638c-0.193-0.165-0.507-0.142-0.675%2C0.048%20%20%20c-0.174%2C0.198-0.153%2C0.501%2C0.045%2C0.676l3.883%2C3.375c0.09%2C0.075%2C0.198%2C0.115%2C0.312%2C0.115c0.141%2C0%2C0.273-0.061%2C0.362-0.166%20%20%20l3.371-3.877c0.173-0.2%2C0.151-0.502-0.047-0.675c-0.194-0.166-0.508-0.144-0.676%2C0.048l-2.592%2C2.979%20%20%20c-0.18-3.417-1.629-6.605-4.099-9.001c-2.538-2.461-5.877-3.817-9.404-3.817c-0.264%2C0-0.479%2C0.215-0.479%2C0.479%20%20%20C44.72%2C30.083%2C44.936%2C30.296%2C45.201%2C30.296z%22%3E%3C/path%3E%3C/g%3E%3C/svg%3E);\n  background-size: 50% 50%;\n  background-repeat: no-repeat;\n  background-position: center center;\n}\n.a-orientation-modal:after {\n  content: \"Insert phone into Cardboard holder.\";\n  color: #333;\n  font-family: sans-serif, monospace;\n  font-size: 13px;\n  text-align: center;\n  position: absolute;\n  width: 100%;\n  top: 70%;\n  transform: translateY(-70%);\n}\n.a-orientation-modal button {\n  background: url(data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20xmlns%3Axlink%3D%22http%3A//www.w3.org/1999/xlink%22%20version%3D%221.1%22%20x%3D%220px%22%20y%3D%220px%22%20viewBox%3D%220%200%20100%20100%22%20enable-background%3D%22new%200%200%20100%20100%22%20xml%3Aspace%3D%22preserve%22%3E%3Cpath%20fill%3D%22%23000000%22%20d%3D%22M55.209%2C50l17.803-17.803c1.416-1.416%2C1.416-3.713%2C0-5.129c-1.416-1.417-3.713-1.417-5.129%2C0L50.08%2C44.872%20%20L32.278%2C27.069c-1.416-1.417-3.714-1.417-5.129%2C0c-1.417%2C1.416-1.417%2C3.713%2C0%2C5.129L44.951%2C50L27.149%2C67.803%20%20c-1.417%2C1.416-1.417%2C3.713%2C0%2C5.129c0.708%2C0.708%2C1.636%2C1.062%2C2.564%2C1.062c0.928%2C0%2C1.856-0.354%2C2.564-1.062L50.08%2C55.13l17.803%2C17.802%20%20c0.708%2C0.708%2C1.637%2C1.062%2C2.564%2C1.062s1.856-0.354%2C2.564-1.062c1.416-1.416%2C1.416-3.713%2C0-5.129L55.209%2C50z%22%3E%3C/path%3E%3C/svg%3E);\n  width: 50px;\n  height: 50px;\n  border: none;\n  text-indent: -9999px;\n}\n@media (min-width: 480px) {\n  .a-enter-vr {\n    bottom: 20px;\n    right: 20px;\n  }\n\n  .a-enter-vr-modal {\n    width: 400px;\n  }\n}\n"; (require("browserify-css").createStyle(css, { "href": "node_modules/aframe/node_modules/aframe-core/style/aframe-core.css"})); module.exports = css;
-},{"browserify-css":96}],94:[function(require,module,exports){
-var css = ".rs-base {\n  background-color: #EF2D5E;\n  border-radius: 0;\n  font-family: 'Roboto Condensed', tahoma, sans-serif;\n  font-size: 10px;\n  line-height: 1.2em;\n  opacity: 0.75;\n  overflow: hidden;\n  padding: 10px;\n  position: fixed;\n  left: 5px;\n  top: 5px;\n  width: 270px;\n  z-index: 10000;\n}\n.rs-base.hidden {\n  display: none;\n}\n.rs-base h1 {\n  color: #fff;\n  cursor: pointer;\n  font-size: 1.4em;\n  font-weight: 300;\n  margin: 0 0 5px;\n  padding: 0;\n}\n.rs-group {\n  display: -webkit-box;\n  display: -webkit-flex;\n  display: flex;\n  -webkit-flex-direction: column-reverse;\n  flex-direction: column-reverse;\n}\n.rs-counter-base {\n  align-items: center;\n  display: -webkit-box;\n  display: -webkit-flex;\n  display: flex;\n  height: 10px;\n  -webkit-justify-content: space-between;\n  justify-content: space-between;\n  margin: 2px 0;\n}\n.rs-counter-id {\n  font-weight: 300;\n  -webkit-box-ordinal-group: 0;\n  -webkit-order: 0;\n  order: 0;\n}\n.rs-counter-value {\n  font-weight: 300;\n  -webkit-box-ordinal-group: 1;\n  -webkit-order: 1;\n  order: 1;\n  text-align: right;\n  width: 25px;\n}\n.rs-canvas {\n  -webkit-box-ordinal-group: 2;\n  -webkit-order: 2;\n  order: 2;\n}\n@media (min-width: 480px) {\n  .rs-base {\n    left: 20px;\n    top: 20px;\n  }\n}\n"; (require("browserify-css").createStyle(css, { "href": "node_modules/aframe/node_modules/aframe-core/style/rStats.css"})); module.exports = css;
-},{"browserify-css":96}],95:[function(require,module,exports){
-module.exports={
-  "name": "aframe",
-  "version": "0.1.1",
-  "description": "Building blocks for the VR Web",
-  "main": "index.js",
-  "scripts": {
-    "start": "npm run dev",
-    "dev": "npm run build && node ./scripts/budo",
-    "browserify": "browserify ./index.js -s 'AFRAME'",
-    "build": "mkdir -p build/ && npm run browserify -- --debug -o build/aframe.js",
-    "dist": "mkdir -p dist/ && npm run browserify -s -- --debug | exorcist dist/aframe.js.map > dist/aframe.js && uglifyjs dist/aframe.js -c warnings=false -m -o dist/aframe.min.js",
-    "preghpages": "npm run dist && rm -rf gh-pages && mkdir -p gh-pages && cp -r {.nojekyll,dist,lib,examples,index.html,style} gh-pages/. 2>/dev/null || : && git checkout dist/ && replace 'build/aframe.js' 'dist/aframe.min.js' gh-pages/ -r --silent",
-    "ghpages": "node ./scripts/gh-pages",
-    "gh-pages": "npm run ghpages",
-    "release:bump": "npm version patch --preminor",
-    "release:push": "npm login && npm publish && git push --follow-tags",
-    "lint": "semistandard -v $(git ls-files '*.js') | snazzy",
-    "precommit": "npm run lint"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/aframevr/aframe.git"
-  },
-  "license": "MIT",
-  "devDependencies": {
-    "browserify": "^11.0.1",
-    "browserify-css": "^0.8.2",
-    "budo": "^7.0.2",
-    "exorcist": "^0.4.0",
-    "gh-pages": "^0.4.0",
-    "html-minifier": "^0.8.0",
-    "husky": "^0.10.1",
-    "polymerize": "^1.0.0",
-    "replace": "^0.3.0",
-    "semistandard": "^7.0.2",
-    "snazzy": "^2.0.1",
-    "uglifyjs": "^2.4.10"
-  },
-  "dependencies": {
-    "aframe-core": "^0.1.1"
-  },
-  "link": true,
-  "browserify": {
-    "transform": [
-      [
-        "polymerize",
-        {
-          "match": ".*.html$"
-        }
-      ]
-    ]
-  },
-  "semistandard": {
-    "ignore": [
-      "build/**",
-      "dist/**",
-      "lib/vendor/**",
-      "examples/_js/**"
-    ]
-  },
-  "keywords": [
-    "aframe",
-    "aframe-core",
-    "vr",
-    "webvr",
-    "3d",
-    "three",
-    "components",
-    "elements"
-  ],
-  "gitHead": "77528185533140eda96fe71e895e696d6cd00bca",
-  "bugs": {
-    "url": "https://github.com/aframevr/aframe/issues"
-  },
-  "homepage": "https://github.com/aframevr/aframe#readme",
-  "_id": "aframe@0.1.1",
-  "_shasum": "7f19f406283eacade073cd1ecda66879530bed84",
-  "_from": "aframe@>=0.1.1 <0.2.0",
-  "_npmVersion": "2.12.1",
-  "_nodeVersion": "0.12.7",
-  "_npmUser": {
-    "name": "mozvr",
-    "email": "cvan@mozilla.com"
-  },
-  "dist": {
-    "shasum": "7f19f406283eacade073cd1ecda66879530bed84",
-    "tarball": "http://registry.npmjs.org/aframe/-/aframe-0.1.1.tgz"
-  },
-  "maintainers": [
-    {
-      "name": "mozvr",
-      "email": "cvan@mozilla.com"
-    }
-  ],
-  "directories": {},
-  "_resolved": "https://registry.npmjs.org/aframe/-/aframe-0.1.1.tgz",
-  "readme": "ERROR: No README data found!"
-}
-
-},{}],96:[function(require,module,exports){
-'use strict';
-// For more information about browser field, check out the browser field at https://github.com/substack/browserify-handbook#browser-field.
-
-module.exports = {
-    // Create a <link> tag with optional data attributes
-    createLink: function(href, attributes) {
-        var head = document.head || document.getElementsByTagName('head')[0];
-        var link = document.createElement('link');
-
-        link.href = href;
-        link.rel = 'stylesheet';
-
-        for (var key in attributes) {
-            if ( ! attributes.hasOwnProperty(key)) {
-                continue;
-            }
-            var value = attributes[key];
-            link.setAttribute('data-' + key, value);
-        }
-
-        head.appendChild(link);
-    },
-    // Create a <style> tag with optional data attributes
-    createStyle: function(cssText, attributes) {
-        var head = document.head || document.getElementsByTagName('head')[0],
-            style = document.createElement('style');
-
-        style.type = 'text/css';
-
-        for (var key in attributes) {
-            if ( ! attributes.hasOwnProperty(key)) {
-                continue;
-            }
-            var value = attributes[key];
-            style.setAttribute('data-' + key, value);
-        }
-        
-        if (style.sheet) { // for jsdom and IE9+
-            style.innerHTML = cssText;
-            style.sheet.cssText = cssText;
-            head.appendChild(style);
-        } else if (style.styleSheet) { // for IE8 and below
-            head.appendChild(style);
-            style.styleSheet.cssText = cssText;
-        } else { // for Chrome, Firefox, and Safari
-            style.appendChild(document.createTextNode(cssText));
-            head.appendChild(style);
-        }
-    }
-};
-
-},{}]},{},[2]);
+},{}]},{},[1]);
