@@ -7,7 +7,7 @@
     <script src="public/bundle.js"></script>
   </head>
   <body>
-    <a-scene stats="true">
+    <a-scene>
 
       <!-- Cameara -->
       <a-entity>
@@ -59,7 +59,7 @@
               dur="5000"
             >
             </a-animation>
-            <a-camera id="camera" cursor-visible="false" ></a-camera>
+            <a-camera id="camera" cursor-visible="true"></a-camera>
           </a-entity>
         </a-entity>
 
@@ -132,6 +132,12 @@
 
         <!-- Car2 -->
         <a-entity id="car2" rotation="0 0 0" position="5 0 2" scale="0.6 0.6 0.6">
+          <a-entity position="-1 4 1">
+            <a-cube color="#fff" width="6" depth="0.1" height="2">
+              <a-mouseenter scale="1.2 1.2 1.2"></a-mouseenter>
+              <a-mouseleave scale="1 1 1"></a-mouseleave></a-cube>
+            <a-entity text="text: Car Insurance;" material="color: #1354a7" position="-2 -0.2 0.05"></a-entity>
+          </a-entity>
           <a-entity id="top" position="-0.2 1.8 0">
             <a-cube color="#88B1E5" width="2.2" depth="2" height="0.7"></a-cube>
             <a-entity mixin="window" position="-0.5 0 1"></a-entity>
