@@ -157,10 +157,33 @@
             position="0 0.1 6.5" rotation="-90 0 0">
         </a-entity>
 
+        <!-- Trees -->
+        <a-entity position="-10 0.2 0">
+          <a-model src="assets/model/tree1/tree1.dae">
+            <a-animation attribute="position" from="0 10 0" to="0 0 0" begin="650" dur="800" easing="ease-out" fill="backwards"></a-animation>
+            <a-animation attribute="visible" from="false" to="true" begin="800" dur="1"></a-animation>
+          </a-model>
+        </a-entity>
+
+        <a-entity position="-10 0.2 6.6">
+          <a-model src="assets/model/tree1/tree1.dae">
+            <a-animation attribute="position" from="0 10 0" to="0 0 0" begin="400" dur="800" easing="ease-out" fill="backwards"></a-animation>
+            <a-animation attribute="visible" from="false" to="true" begin="400" dur="1"></a-animation>
+          </a-model>
+        </a-entity>
+
+        <a-entity position="10 0.2 6.6">
+          <a-model src="assets/model/tree1/tree1.dae">
+            <a-animation attribute="position" from="0 10 0" to="0 0 0" begin="600" dur="800" easing="ease-out" fill="backwards"></a-animation>
+            <a-animation attribute="visible" from="false" to="true" begin="600" dur="1"></a-animation>
+          </a-model>
+        </a-entity>
+
+
         <!-- Text Board  -->
         <a-entity id="board" position="0 3 0">
           <a-cube id="cube" position="0 0 0" width="6" height="2" depth="0.1"  color="#1354a7"></a-cube>
-          <a-entity text="text: Apia" material="color: white" position="-0.7 -0.2 0.05"></a-entity>
+          <a-entity text="text: Apia World;" material="color: white" position="-1.7 -0.2 0.05"></a-entity>
           <a-cylinder radius="0.1" height="1.5" color="#6F5046" position="-2.2 -1.75 0"></a-cylinder>
           <a-cylinder radius="0.1" height="1.5" color="#6F5046" position="2.2 -1.75 0"></a-cylinder>
         </a-entity>
