@@ -21,7 +21,7 @@
         <a-entity position="0 1.2 -0.6">
           <a-animation attribute="position"
             begin="10000"
-            to="0 -20 -13"
+            to="5 -20 -16.5"
             easing="linear"
             dur="5000"
           >
@@ -58,14 +58,52 @@
         </a-assets>
 
         <!-- Building -->
-        <a-entity id="building" position="4 0 8" geometry="primitive: box; depth: 1; height: 3; width: 2.5" material="color: pink">
+        <a-entity id="building" scale="2 2 2" position="4 0 9" geometry="primitive: box; depth: 1; height: 3; width: 2.5" material="color: pink">
           <a-plane width="1" height="2.28" depth="2"  color="#000" position="-0.8 2 0" rotation="45 90 0"></a-plane>
           <a-plane width="1" height="2.28" depth="2"  color="#000" position="0.8 2 0" rotation="-45 90 0"></a-plane>
           <a-entity mixin="window" material="color: white" width="0.5" height="0.5" position="-0.5 1 -0.5" rotation="0 0 90"></a-entity>
           <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5" rotation="0 0 90"></a-cylinder>
           <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5"></a-cylinder>
         </a-entity>
-        
+        <!-- Building -->
+        <a-entity id="building" scale="2 2 2" position="12 0 9" geometry="primitive: box; depth: 1; height: 3; width: 2.5" material="color: pink">
+          <a-plane width="1" height="2.28" depth="2"  color="#000" position="-0.8 2 0" rotation="45 90 0"></a-plane>
+          <a-plane width="1" height="2.28" depth="2"  color="#000" position="0.8 2 0" rotation="-45 90 0"></a-plane>
+          <a-entity mixin="window" material="color: white" width="0.5" height="0.5" position="-0.5 1 -0.5" rotation="0 0 90"></a-entity>
+          <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5" rotation="0 0 90"></a-cylinder>
+          <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5"></a-cylinder>
+        </a-entity>
+        <!-- Building -->
+        <a-entity id="building" scale="2 2 2" position="-8 0 9" geometry="primitive: box; depth: 1; height: 3; width: 2.5" material="color: pink">
+          <a-plane width="1" height="2.28" depth="2"  color="#000" position="-0.8 2 0" rotation="45 90 0"></a-plane>
+          <a-plane width="1" height="2.28" depth="2"  color="#000" position="0.8 2 0" rotation="-45 90 0"></a-plane>
+          <a-entity mixin="window" material="color: white" width="0.5" height="0.5" position="-0.5 1 -0.5" rotation="0 0 90"></a-entity>
+          <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5" rotation="0 0 90"></a-cylinder>
+          <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5"></a-cylinder>
+        </a-entity>
+        <!-- Building -->
+        <a-entity id="building" scale="2 2 2" position="12 0 -3" geometry="primitive: box; depth: 1; height: 3; width: 2.5" material="color: pink">
+          <a-plane width="1" height="2.28" depth="2"  color="#000" position="-0.8 2 0" rotation="45 90 0"></a-plane>
+          <a-plane width="1" height="2.28" depth="2"  color="#000" position="0.8 2 0" rotation="-45 90 0"></a-plane>
+          <a-entity mixin="window" material="color: white" width="0.5" height="0.5" position="-0.5 1 -0.5" rotation="0 0 90"></a-entity>
+          <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5" rotation="0 0 90"></a-cylinder>
+          <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5"></a-cylinder>
+        </a-entity>
+        <!-- Building -->
+        <a-entity id="building" scale="2 2 2" position="-12 0 -3" geometry="primitive: box; depth: 1; height: 3; width: 2.5" material="color: pink">
+
+            <a-entity position="1 4 6" rotation="0 -90 0">
+              <a-cube color="#fff" width="6" depth="0.1" height="2">
+                <a-mouseenter scale="1.2 1.2 1.2"></a-mouseenter>
+                <a-mouseleave scale="1 1 1"></a-mouseleave></a-cube>
+              <a-entity text="text: Home Insurance;" rotation="0 180 0" material="color: #1354a7" position="2.5 -0.2 -0.1"></a-entity>
+            </a-entity>
+          <a-plane width="1" height="2.28" depth="2"  color="#000" position="-0.8 2 0" rotation="45 90 0"></a-plane>
+          <a-plane width="1" height="2.28" depth="2"  color="#000" position="0.8 2 0" rotation="-45 90 0"></a-plane>
+          <a-entity mixin="window" material="color: white" width="0.5" height="0.5" position="-0.5 1 -0.5" rotation="0 0 90"></a-entity>
+          <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5" rotation="0 0 90"></a-cylinder>
+          <a-cylinder radius="0.05" height="0.5" color="#6F5046" position="-0.5 1 -0.5"></a-cylinder>
+        </a-entity>
         <!-- Ballon2  -->
         <a-entity id="balloon2" position="-10 8 0">
           <a-animation attribute="position"
@@ -84,7 +122,7 @@
         </a-entity>
 
         <!-- Car -->
-        <a-entity id="car" rotation="0 0 0" position="-15 0 4" scale="0.6 0.6 0.6">
+        <a-entity id="car" rotation="0 0 0" position="-15 0 2" scale="0.6 0.6 0.6">
           <a-animation attribute="visible"
             begin="10000"
             from="true"
@@ -93,7 +131,7 @@
             dur="9900"
             repeat="indefinite"></a-animation>
           <a-animation attribute="position"
-             to="18 0 4"
+             to="18 0 2"
              dur="10000"
              easing="linear"
              fill="forwards"
@@ -134,8 +172,8 @@
         </a-entity>
 
         <!-- Car2 -->
-        <a-entity id="car2" rotation="0 0 0" position="5 0 2" scale="0.6 0.6 0.6">
-          <a-entity position="-1 4 1">
+        <a-entity id="car2" rotation="0 0 0" position="5 0 4" scale="0.6 0.6 0.6">
+          <a-entity position="-1 4 0">
             <a-cube color="#fff" width="6" depth="0.1" height="2">
               <a-mouseenter scale="1.2 1.2 1.2"></a-mouseenter>
               <a-mouseleave scale="1 1 1"></a-mouseleave></a-cube>
@@ -207,7 +245,7 @@
         <a-light type="ambient" color="#ccc"></a-light>
 
         <!-- Ground -->
-        <a-plane rotation="-90 0 0" width="40" height="40" color="#f0e1bb"></a-plane>
+        <a-plane rotation="-90 0 0" position="0 0 2" width="40" height="20" color="#f0e1bb"></a-plane>
 
         <!-- Sky -->
         <a-sky color="#cee8ff"></a-sky>
@@ -228,40 +266,28 @@
         <!-- Trees -->
         <a-entity position="-10 0.2 0">
           <a-model src="assets/model/tree1/tree1.dae">
-            <a-animation attribute="position" from="0 10 0" to="0 0 0" begin="650" dur="800" easing="ease-out" fill="backwards"></a-animation>
-            <a-animation attribute="visible" from="false" to="true" begin="800" dur="1"></a-animation>
-          </a-model>
+            </a-model>
         </a-entity>
 
         <a-entity position="-10 0.2 6.6">
           <a-model src="assets/model/tree1/tree1.dae">
-            <a-animation attribute="position" from="0 10 0" to="0 0 0" begin="400" dur="800" easing="ease-out" fill="backwards"></a-animation>
-            <a-animation attribute="visible" from="false" to="true" begin="400" dur="1"></a-animation>
           </a-model>
         </a-entity>
 
         <a-entity position="10 0.2 6.6">
           <a-model src="assets/model/tree1/tree1.dae">
-            <a-animation attribute="position" from="0 10 0" to="0 0 0" begin="600" dur="800" easing="ease-out" fill="backwards"></a-animation>
-            <a-animation attribute="visible" from="false" to="true" begin="600" dur="1"></a-animation>
-          </a-model>
+            </a-model>
         </a-entity>
 
 
         <!-- Text Board  -->
-        <a-entity id="board" position="0 3 0">
+        <a-entity id="board" position="0 2.5 0">
           <a-cube id="cube" position="0 0 0" width="6" height="2" depth="0.1"  color="#1354a7"></a-cube>
           <a-entity text="text: Apia World;" material="color: white" position="-1.7 -0.2 0.05"></a-entity>
           <a-cylinder radius="0.1" height="1.5" color="#6F5046" position="-2.2 -1.75 0"></a-cylinder>
           <a-cylinder radius="0.1" height="1.5" color="#6F5046" position="2.2 -1.75 0"></a-cylinder>
         </a-entity>
 
-        <!-- Video Board  -->
-        <a-entity id="video-board" position="10 3 0">
-          <a-video src="assets/sound/space-oddity.mp4" width="6" height="2"></a-video>
-          <a-cylinder radius="0.1" height="1.5" color="#6F5046" position="-2.2 -1.75 0"></a-cylinder>
-          <a-cylinder radius="0.1" height="1.5" color="#6F5046" position="2.2 -1.75 0"></a-cylinder>
-        </a-entity>
 
       </a-entity>
     </a-scene>
